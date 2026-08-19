@@ -34,7 +34,7 @@ uv sync
 # Initialize database
 uv run ierp init
 
-# Sync Google Contacts
+# Sync Google Contacts ($0 API cost)
 uv run ierp sync-contacts
 
 # Auto-merge duplicate contacts
@@ -50,6 +50,32 @@ uv run ierp contacts
 # Launch Web Dashboard
 uv run ierp dashboard
 ```
+
+---
+
+## 🛠️ Complete CLI Command Reference
+
+| Command | Description |
+| :--- | :--- |
+| `uv run ierp init` | Initialize the SQLite database schema and indexes. |
+| `uv run ierp sync-contacts` | Sync contacts from Google People API ($0 cost). |
+| `uv run ierp merge-contacts --auto` | Auto-detect and merge matching duplicate contacts. |
+| `uv run ierp merge-contacts --source-id <ID> --target-id <ID>` | Manually merge two contacts. |
+| `uv run ierp import-timeline <file.json>` | Import Google Maps Semantic Location History JSON. |
+| `uv run ierp import <dir>` | Import events from Notion export directory. |
+| `uv run ierp import-crm <dir>` | Import CRM contacts from Notion export directory. |
+| `uv run ierp insert --title "<Title>" ...` | Insert a structured journal event directly. |
+| `uv run ierp list [--limit N]` | List recent events. |
+| `uv run ierp show <ID>` | Show full event details and linked contacts. |
+| `uv run ierp search "<query>"` | Search events by keyword. |
+| `uv run ierp contacts [--source manual\|google\|merged\|all]` | List CRM contacts with filtering. |
+| `uv run ierp show-contact <ID>` | Show contact details and linked events. |
+| `uv run ierp vendors [--category <CAT>] [--favorite]` | List vendors and preferred service providers. |
+| `uv run ierp show-vendor <ID>` | Show full vendor/seller details. |
+| `uv run ierp insert-vendor --name "<Name>" ...` | Insert a vendor/seller record directly. |
+| `uv run ierp link` | Run relationship discovery between events and contacts. |
+| `uv run ierp dashboard [--port 8000]` | Start web dashboard server with live GPS webhook receiver. |
+| `uv run ierp test` | Run automated test suite. |
 
 ---
 

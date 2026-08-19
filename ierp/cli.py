@@ -377,7 +377,7 @@ def show_vendor(vendor_id: int) -> None:
 
 def run_tests() -> None:
     """Executes the automated regression test suite."""
-    from ierp.tests.test_erp import run_tests as execute_suite
+    from ierp.tests.test_ierp import run_tests as execute_suite
     print(f"\n{C_BOLD}{C_CYAN}=== Running iERP Automated Test Suite ==={C_RESET}\n")
     result = execute_suite()
     if result.wasSuccessful():

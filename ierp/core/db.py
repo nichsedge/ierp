@@ -1,5 +1,5 @@
 """
-Database engine and connection management for Personal ERP.
+Database engine and connection management for iERP.
 Enforces SQLite Write-Ahead Logging (WAL) and creates performance indexes.
 """
 

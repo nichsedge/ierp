@@ -7,7 +7,7 @@ requires-python = ">=3.10"
 dependencies = []
 
 [project.scripts]
-ierp = "ierp.manage_events:main"
+ierp = "ierp.cli:main"
 
 [build-system]
 requires = ["hatchling"]

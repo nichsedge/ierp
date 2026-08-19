@@ -1,6 +1,6 @@
 """
-Automated unit and integration test suite for Personal ERP.
-Runs with standard library unittest (zero dependencies).
+Automated unit and integration test suite for iERP.
+Runs with standard library unittest (zero external dependencies).
 """
 
 import json
@@ -21,7 +21,7 @@ from ierp.core.linking import link_events_and_contacts
 from ierp.core.merging import merge_two_contacts, auto_merge_contacts
 
 
-class TestPersonalERP(unittest.TestCase):
+class TestIERP(unittest.TestCase):
 
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -148,7 +148,7 @@ class TestPersonalERP(unittest.TestCase):
 
 
 def run_tests():
-    suite = unittest.TestLoader().loadTestsFromTestCase(TestPersonalERP)
+    suite = unittest.TestLoader().loadTestsFromTestCase(TestIERP)
     runner = unittest.TextTestRunner(verbosity=2)
     return runner.run(suite)
 

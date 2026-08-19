@@ -1,5 +1,5 @@
 """
-Central configuration, paths, and constants for Personal ERP.
+Central configuration, paths, and constants for iERP.
 Strictly zero external dependencies (Python standard library only).
 """
 

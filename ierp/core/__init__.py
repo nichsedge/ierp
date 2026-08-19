@@ -1,5 +1,5 @@
 """
-Personal ERP Core Package.
+iERP Core Package.
 """
 
 from .config import DB_PATH, MEDIA_DIR, GOOGLE_CREDS_PATH, GOOGLE_TOKEN_PATH, GEO_CACHE_PATH
