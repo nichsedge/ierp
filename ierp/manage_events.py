@@ -19,15 +19,15 @@ if str(REPO_ROOT) not in sys.path:
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from erp.core.config import (
+from ierp.core.config import (
     DB_PATH, MEDIA_DIR, C_RESET, C_BOLD, C_GREEN, C_CYAN, C_YELLOW, C_RED, C_MAGENTA
 )
-from erp.core.db import get_db, init_db
-from erp.core.google_sync import sync_google_contacts
-from erp.core.importers import import_notion_export, import_crm_contacts, import_timeline, parse_date_to_iso
-from erp.core.linking import link_events_and_contacts, run_manual_link
-from erp.core.merging import merge_two_contacts, auto_merge_contacts
-from erp.core.dashboard import start_dashboard_server
+from ierp.core.db import get_db, init_db
+from ierp.core.google_sync import sync_google_contacts
+from ierp.core.importers import import_notion_export, import_crm_contacts, import_timeline, parse_date_to_iso
+from ierp.core.linking import link_events_and_contacts, run_manual_link
+from ierp.core.merging import merge_two_contacts, auto_merge_contacts
+from ierp.core.dashboard import start_dashboard_server
 
 
 def insert_event_direct(
@@ -377,8 +377,8 @@ def show_vendor(vendor_id: int) -> None:
 
 def run_tests() -> None:
     """Executes the automated regression test suite."""
-    from erp.tests.test_erp import run_tests as execute_suite
-    print(f"\n{C_BOLD}{C_CYAN}=== Running Personal ERP Automated Test Suite ==={C_RESET}\n")
+    from ierp.tests.test_erp import run_tests as execute_suite
+    print(f"\n{C_BOLD}{C_CYAN}=== Running iERP Automated Test Suite ==={C_RESET}\n")
     result = execute_suite()
     if result.wasSuccessful():
         print(f"\n{C_GREEN}{C_BOLD}All tests passed successfully!{C_RESET}\n")

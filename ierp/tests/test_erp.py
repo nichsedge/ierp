@@ -14,11 +14,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from erp.core.config import MONTH_MAP
-from erp.core.db import get_db, init_db
-from erp.core.importers import parse_date_to_iso
-from erp.core.linking import link_events_and_contacts
-from erp.core.merging import merge_two_contacts, auto_merge_contacts
+from ierp.core.config import MONTH_MAP
+from ierp.core.db import get_db, init_db
+from ierp.core.importers import parse_date_to_iso
+from ierp.core.linking import link_events_and_contacts
+from ierp.core.merging import merge_two_contacts, auto_merge_contacts
 
 
 class TestPersonalERP(unittest.TestCase):

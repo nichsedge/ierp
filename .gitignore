@@ -29,11 +29,11 @@ ENV/
 htmlcov/
 
 # Local databases, media and secrets
-erp/events.db
-erp/events_media/
-erp/geocode_cache.json
-erp/google_credentials.json
-erp/google_token.json
+ierp/events.db
+ierp/events_media/
+ierp/geocode_cache.json
+ierp/google_credentials.json
+ierp/google_token.json
 *.env
 *.key
 *.pem
