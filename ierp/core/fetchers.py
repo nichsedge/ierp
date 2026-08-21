@@ -10,6 +10,7 @@ import os
 import re
 import time
 import urllib.parse
+from pathlib import Path
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -108,8 +109,10 @@ def _iso(v) -> str:
 
 
 def _load_env():
-    """Populates os.environ from ~/.secrets or local .env (idempotent)."""
+    """Populates os.environ from ~/.secrets or repo-root .env (idempotent)."""
+    repo_root = Path(__file__).resolve().parent.parent.parent
     for candidate in (os.path.expanduser("~/.secrets"),
+                      repo_root / ".env",
                       os.path.join(os.path.dirname(__file__), ".env")):
         if not os.path.exists(candidate):
             continue
