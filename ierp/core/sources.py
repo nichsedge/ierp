@@ -6,6 +6,7 @@ are the single place to touch when a source adds or renames columns.
 """
 
 import math
+import re
 from typing import Optional
 
 # get-data source key -> (ierp media_type, ierp source name)
@@ -16,6 +17,13 @@ SOURCE_MAP = {
     "anilist_anime": ("anime", "anilist"),
     "anilist_manga": ("manga", "anilist"),
     "mydramalist": ("drama", "mydramalist"),
+}
+
+# When the same normalized title exists from multiple sources within a
+# media_type, only rows from the first source listed here are kept.
+# (Hardcover is the preferred book source; goodreads is fallback-only.)
+SOURCE_PREFERENCE = {
+    "book": ("hardcover", "goodreads"),
 }
 
 # Candidate column names per record field (first non-empty match wins).
@@ -145,13 +153,33 @@ def normalize_row(source_key: str, r: dict) -> Optional[dict]:
     }
 
 
-def normalize_rows(source_key: str, rows: list) -> list:
-    """Maps a list of raw row dicts onto ierp ingest records."""
+def normalize_title(title: str) -> str:
+    """Aggressive normalization for cross-source title matching (alphanumeric lowercase)."""
+    return re.sub(r"[^a-z0-9]", "", (title or "").lower())
+
+
+def normalize_rows(source_key: str, rows: list, existing_titles: Optional[set] = None) -> list:
+    """
+    Maps a list of raw row dicts onto ierp ingest records.
+    If SOURCE_PREFERENCE defines higher-priority sources for this media_type and
+    `existing_titles` (normalized titles already stored from those sources) is
+    given, rows duplicating them are skipped — the preferred source wins.
+    """
+    media_type, src = SOURCE_MAP.get(source_key, (source_key, source_key))
+    preferred = SOURCE_PREFERENCE.get(media_type, ())
+    shadowed = existing_titles if (existing_titles is not None and src in preferred) else None
+    higher = set(preferred[:preferred.index(src)]) if src in preferred else set()
+
     records = []
     for r in rows:
         if not isinstance(r, dict):
             continue
         rec = normalize_row(source_key, r)
-        if rec:
-            records.append(rec)
+        if not rec:
+            continue
+        if shadowed is not None and higher:
+            # skip if any higher-priority source already has this title
+            if any(normalize_title(rec["title"]) in s for s in [shadowed]):
+                continue
+        records.append(rec)
     return records

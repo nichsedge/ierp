@@ -27,13 +27,40 @@ from .sources import SOURCE_MAP, normalize_rows
 def ingest_rows(source_key: str, rows: list, db_path: Optional[Path] = None) -> dict:
     """
     Normalizes raw rows for a source and bulk-ingests them in one transaction.
-    Returns {"items": n, "logs": n, "skipped": n}.
+    Cross-source duplicates are skipped when a higher-priority source
+    (SOURCE_PREFERENCE in sources.py) already has the same title.
+    Returns {"items": n, "skipped": n}.
     """
     init_db(db_path)
-    records = normalize_rows(source_key, rows)
+    records = normalize_rows(source_key, rows, existing_titles=_stored_titles(db_path, source_key))
     result = ingest_media_records(records, db_path)
     result["skipped"] = len(rows) - len(records)
     return result
+
+
+def _stored_titles(db_path: Optional[Path], source_key: str) -> set:
+    """
+    Normalized titles already stored from sources with HIGHER priority than
+    source_key for its media_type. Used to shadow duplicate rows.
+    """
+    from .db import get_db
+    from .sources import SOURCE_MAP, SOURCE_PREFERENCE, normalize_title
+
+    media_type, src = SOURCE_MAP.get(source_key, (source_key, source_key))
+    preferred = SOURCE_PREFERENCE.get(media_type, ())
+    if src not in preferred:
+        return set()
+    higher = preferred[:preferred.index(src)]
+    if not higher:
+        return set()
+
+    placeholders = ",".join("?" for _ in higher)
+    with closing(get_db(db_path)) as conn:
+        rows = conn.execute(
+            f"SELECT title FROM media_items WHERE media_type = ? AND source IN ({placeholders})",
+            (media_type, *higher),
+        ).fetchall()
+    return {normalize_title(t) for (t,) in rows}
 
 
 def make_handler(db_path: Optional[Path] = None):
