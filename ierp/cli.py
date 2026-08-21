@@ -28,6 +28,7 @@ from ierp.core.importers import import_notion_export, import_crm_contacts, impor
 from ierp.core.linking import link_events_and_contacts, run_manual_link
 from ierp.core.merging import merge_two_contacts, auto_merge_contacts
 from ierp.core.dashboard import start_dashboard_server
+from ierp.core.media import ingest_media_records, upsert_link, list_media, list_links
 
 
 def insert_event_direct(
@@ -460,6 +461,24 @@ def main():
 
     subparsers.add_parser("test", help="Run automated test suite")
 
+    media_ingest_parser = subparsers.add_parser("ingest-media", help="Ingest normalized media records from JSON (stdin or file) - used by get-data")
+    media_ingest_parser.add_argument("file", nargs="?", help="Path to JSON array of media records (default: stdin)")
+
+    media_list_parser = subparsers.add_parser("media", help="List recent media logs")
+    media_list_parser.add_argument("--type", help="Filter by media_type (book, film, anime, manga, drama)")
+    media_list_parser.add_argument("--limit", type=int, default=20)
+
+    insert_link_parser = subparsers.add_parser("insert-link", help="Insert/upsert a link record")
+    insert_link_parser.add_argument("--label", required=True)
+    insert_link_parser.add_argument("--url", required=True)
+    insert_link_parser.add_argument("--category", help="Category (e.g. social, profile, reference)")
+    insert_link_parser.add_argument("--private", action="store_true", help="Exclude from public garden export")
+    insert_link_parser.add_argument("--notes", help="Notes")
+
+    links_parser = subparsers.add_parser("links", help="List links")
+    links_parser.add_argument("--category", help="Filter by category")
+    links_parser.add_argument("--public-only", action="store_true")
+
     args = parser.parse_args()
 
     if args.command == "init":
@@ -510,6 +529,42 @@ def main():
         start_dashboard_server(port=args.port, open_browser=not args.no_browser)
     elif args.command == "test":
         run_tests()
+    elif args.command == "ingest-media":
+        init_db()
+        if args.file:
+            with open(args.file, "r", encoding="utf-8") as f:
+                records = json.load(f)
+        else:
+            records = json.load(sys.stdin)
+        result = ingest_media_records(records)
+        print(f"{C_GREEN}Ingested {result['items']} media items / {result['logs']} logs.{C_RESET}")
+    elif args.command == "media":
+        rows = list_media(media_type=args.type, limit=args.limit)
+        if not rows:
+            print("No media found.")
+        else:
+            print(f"\n{C_BOLD}{'ID':<6} | {'Type':<8} | {'Title':<34} | {'Status':<12} | {'Rating':<6} | {'Date':<10}{C_RESET}")
+            print("-" * 90)
+            for mid, mtype, title, status, rating, dlog, fin in rows:
+                date = (dlog or fin or "")[:10]
+                rating_s = f"{rating:g}" if rating is not None else ""
+                print(f"{mid:<6} | {(mtype or ''):<8} | {title[:34]:<34} | {(status or '')[:12]:<12} | {rating_s:<6} | {date:<10}")
+            print()
+    elif args.command == "insert-link":
+        init_db()
+        lid = upsert_link(args.label, args.url, category=args.category,
+                          is_public=not args.private, notes=args.notes)
+        print(f"{C_GREEN}Link #{lid} saved: {args.label}{C_RESET}")
+    elif args.command == "links":
+        rows = list_links(category=args.category, public_only=args.public_only)
+        if not rows:
+            print("No links found.")
+        else:
+            print(f"\n{C_BOLD}{'ID':<5} | {'Label':<28} | {'Category':<12} | {'Public':<6} | URL{C_RESET}")
+            print("-" * 100)
+            for lid, label, url, cat, pub in rows:
+                print(f"{lid:<5} | {label[:28]:<28} | {(cat or '')[:12]:<12} | {'yes' if pub else 'no':<6} | {url}")
+            print()
     else:
         parser.print_help()
 

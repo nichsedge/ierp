@@ -107,6 +107,56 @@ def init_db(db_path: Optional[Path] = None, verbose: bool = False) -> None:
     """)
 
     cursor.execute("""
+    CREATE TABLE IF NOT EXISTS media_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        media_type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        original_title TEXT,
+        year INTEGER,
+        author TEXT,
+        country TEXT,
+        external_id TEXT,
+        source TEXT,
+        url TEXT,
+        extra_json TEXT,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+        UNIQUE(media_type, source, external_id)
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS media_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        media_item_id INTEGER NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
+        status TEXT,
+        rating REAL,
+        progress TEXT,
+        started_at TEXT,
+        finished_at TEXT,
+        date_logged TEXT,
+        review TEXT,
+        raw_json TEXT,
+        source TEXT,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+        UNIQUE(media_item_id, source)
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        label TEXT NOT NULL,
+        url TEXT NOT NULL,
+        category TEXT,
+        is_public INTEGER DEFAULT 1,
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+    """)
+
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS sync_state (
         key TEXT PRIMARY KEY,
         value TEXT,
@@ -201,6 +251,12 @@ def init_db(db_path: Optional[Path] = None, verbose: bool = False) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_vendors_name ON vendors(name);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_vendors_category ON vendors(category);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_vendors_favorite ON vendors(favorite);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_items_type ON media_items(media_type);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_items_title ON media_items(title);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_items_ext ON media_items(source, external_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_logs_item ON media_logs(media_item_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_logs_date ON media_logs(date_logged);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_links_category ON links(category);")
 
     conn.commit()
     conn.close()
