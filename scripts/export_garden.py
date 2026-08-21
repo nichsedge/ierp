@@ -113,6 +113,7 @@ def export_media(conn: sqlite3.Connection, dry_run: bool = False) -> dict:
     ).fetchall()
 
     counts: dict = {}
+    expected: dict = {}  # subdir -> set of filenames the DB says should exist
     for mtype, title, source, data_json in rows:
         if mtype not in MEDIA_TARGETS:
             continue  # unknown media_type: skip rather than crash on new sources
@@ -125,10 +126,36 @@ def export_media(conn: sqlite3.Connection, dry_run: bool = False) -> dict:
 
         fm, body = build_media_note(mtype, title, source, data)
         subdir, _ = MEDIA_TARGETS[mtype]
-        rel = str(Path(subdir) / f"{sanitize_filename(title)}.md")
+        filename = f"{sanitize_filename(title)}.md"
+        rel = str(Path(subdir) / filename)
+        expected.setdefault(subdir, set()).add(filename)
         write_note(rel, fm, body, dry_run)
         counts[mtype] = counts.get(mtype, 0) + 1
+
+    pruned = prune_stale_notes(expected, dry_run)
+    counts["_pruned"] = pruned
     return counts
+
+
+def prune_stale_notes(expected: dict, dry_run: bool = False) -> int:
+    """
+    Deletes .md files in managed media dirs that no longer correspond to any
+    DB row (e.g. after source switches or title changes). Only touches the
+    MEDIA_TARGETS directories — never other garden content.
+    """
+    pruned = 0
+    for subdir, filenames in expected.items():
+        dir_path = Path(GARDEN_CONTENT) / subdir
+        if not dir_path.is_dir():
+            continue
+        for f in sorted(dir_path.glob("*.md")):
+            if f.name not in filenames:
+                if dry_run:
+                    print(f"  [dry-run] would prune {subdir}/{f.name}")
+                else:
+                    f.unlink()
+                pruned += 1
+    return pruned
 
 
 def export_links(conn: sqlite3.Connection, dry_run: bool = False) -> int:
@@ -177,7 +204,10 @@ def main() -> int:
     mode = " [dry-run]" if args.check else ""
     print(f"\nExported from ierp{mode}:")
     for mtype, n in sorted(counts.items()):
-        print(f"  - {mtype:8}: {n:4d} notes")
+        if mtype == "_pruned":
+            print(f"  - pruned : {n:4d} stale notes")
+        else:
+            print(f"  - {mtype:8}: {n:4d} notes")
     print(f"  - links  : {n_links} entries -> {LINKS_NOTE}")
     return 0
 
