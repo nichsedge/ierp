@@ -35,7 +35,7 @@ def upsert_media_item(
     Falls back to (media_type, title) matching when external_id is missing.
     Returns the media_items.id.
     """
-    extra_json = json.dumps(extra, ensure_ascii=False) if extra else None
+    extra_json = json.dumps(extra, ensure_ascii=False, default=str) if extra else None
 
     if external_id:
         cursor.execute(
