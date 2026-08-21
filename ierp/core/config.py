@@ -13,6 +13,16 @@ GOOGLE_CREDS_PATH = BASE_DIR / "google_credentials.json"
 GOOGLE_TOKEN_PATH = BASE_DIR / "google_token.json"
 GEO_CACHE_PATH = BASE_DIR / "geocode_cache.json"
 
+# Media tracker profiles (used by `ierp sync`)
+MEDIA_PROFILES = {
+    "hardcover": {"username": "nichsedge"},
+    "goodreads": {"user_id": "74584614"},
+    "letterboxd": {"username": "PenyulTekowel"},
+    "anilist_anime": {"username": "laataiasu"},
+    "anilist_manga": {"username": "laataiasu"},
+    "mydramalist": {"username": "Chanculus"},
+}
+
 # ANSI Terminal Color Tokens
 C_RESET = "\033[0m"
 C_BOLD = "\033[1m"

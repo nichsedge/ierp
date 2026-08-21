@@ -35,6 +35,8 @@ from ierp.core.commerce import (
     list_payment_accounts, list_referrals,
 )
 from ierp.core.ingest import ingest_rows, serve_ingest
+from ierp.core.sync import sync_all
+from ierp.core.config import MEDIA_PROFILES
 
 
 def insert_event_direct(
@@ -477,6 +479,11 @@ def main():
     serve_ingest_parser = subparsers.add_parser("serve-ingest", help="Start local HTTP ingestion server (POST /ingest/<source_key> with raw rows JSON)")
     serve_ingest_parser.add_argument("--port", type=int, default=8765)
 
+    sync_parser = subparsers.add_parser("sync", help="Fetch media from trackers and ingest (all sources or --source)")
+    sync_parser.add_argument("--source", action="append", dest="sources",
+                             help="Sync only this source (repeatable: --source goodreads --source letterboxd)")
+    sync_parser.add_argument("--list", action="store_true", help="List configured sources")
+
     media_list_parser = subparsers.add_parser("media", help="List recent media logs")
     media_list_parser.add_argument("--type", help="Filter by media_type (book, film, anime, manga, drama)")
     media_list_parser.add_argument("--limit", type=int, default=20)
@@ -576,6 +583,22 @@ def main():
               f"({result['skipped']} skipped) from {args.source}.{C_RESET}")
     elif args.command == "serve-ingest":
         serve_ingest(port=args.port)
+    elif args.command == "sync":
+        if args.list:
+            print("Configured media sources:")
+            for key, profile in MEDIA_PROFILES.items():
+                print(f"  - {key:15} {profile}")
+            return
+        results = sync_all(MEDIA_PROFILES, sources=args.sources)
+        failed = 0
+        for r in results:
+            if r["ok"]:
+                print(f"{C_GREEN}✅ {r['source']:15} {r['rows']:4d} rows ingested{C_RESET}")
+            else:
+                failed += 1
+                print(f"{C_RED}❌ {r['source']:15} {r['error']}{C_RESET}")
+        if failed:
+            sys.exit(1)
     elif args.command == "media":
         rows = list_media(media_type=args.type, limit=args.limit)
         if not rows:
