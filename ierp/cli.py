@@ -34,7 +34,7 @@ from ierp.core.commerce import (
     upsert_payment_account, upsert_referral,
     list_payment_accounts, list_referrals,
 )
-import sqlite3 as _sqlite3
+from ierp.core.ingest import ingest_rows, serve_ingest
 
 
 def insert_event_direct(
@@ -470,6 +470,13 @@ def main():
     media_ingest_parser = subparsers.add_parser("ingest-media", help="Ingest normalized media records from JSON (stdin or file) - used by get-data")
     media_ingest_parser.add_argument("file", nargs="?", help="Path to JSON array of media records (default: stdin)")
 
+    ingest_rows_parser = subparsers.add_parser("ingest-rows", help="Ingest RAW source rows from JSON (file or stdin); ierp does the normalization")
+    ingest_rows_parser.add_argument("source", help="Source key (hardcover, goodreads, letterboxd, anilist_anime, anilist_manga, mydramalist)")
+    ingest_rows_parser.add_argument("file", nargs="?", help="Path to JSON array of raw row objects (default: stdin)")
+
+    serve_ingest_parser = subparsers.add_parser("serve-ingest", help="Start local HTTP ingestion server (POST /ingest/<source_key> with raw rows JSON)")
+    serve_ingest_parser.add_argument("--port", type=int, default=8765)
+
     media_list_parser = subparsers.add_parser("media", help="List recent media logs")
     media_list_parser.add_argument("--type", help="Filter by media_type (book, film, anime, manga, drama)")
     media_list_parser.add_argument("--limit", type=int, default=20)
@@ -558,6 +565,17 @@ def main():
             records = json.load(sys.stdin)
         result = ingest_media_records(records)
         print(f"{C_GREEN}Ingested {result['items']} media items / {result['logs']} logs.{C_RESET}")
+    elif args.command == "ingest-rows":
+        if args.file:
+            with open(args.file, "r", encoding="utf-8") as f:
+                rows = json.load(f)
+        else:
+            rows = json.load(sys.stdin)
+        result = ingest_rows(args.source, rows)
+        print(f"{C_GREEN}Ingested {result['items']} media items / {result['logs']} logs "
+              f"({result['skipped']} skipped) from {args.source}.{C_RESET}")
+    elif args.command == "serve-ingest":
+        serve_ingest(port=args.port)
     elif args.command == "media":
         rows = list_media(media_type=args.type, limit=args.limit)
         if not rows:
@@ -589,7 +607,7 @@ def main():
         init_db()
         with open(args.file, "r", encoding="utf-8") as f:
             items = json.load(f)
-        conn = _sqlite3.connect(str(DB_PATH), timeout=10.0)
+        conn = get_db()
         cur = conn.cursor()
         init_commerce_tables(cur)
         for it in items:
@@ -603,7 +621,7 @@ def main():
         init_db()
         with open(args.file, "r", encoding="utf-8") as f:
             items = json.load(f)
-        conn = _sqlite3.connect(str(DB_PATH), timeout=10.0)
+        conn = get_db()
         cur = conn.cursor()
         init_commerce_tables(cur)
         for it in items:
