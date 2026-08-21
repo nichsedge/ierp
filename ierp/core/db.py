@@ -111,11 +111,8 @@ def init_db(db_path: Optional[Path] = None, verbose: bool = False) -> None:
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         media_type TEXT NOT NULL,
         title TEXT NOT NULL,
-        original_title TEXT,
-        year INTEGER,
-        author TEXT,
         source TEXT,
-        extra_json TEXT,
+        data_json TEXT,
         created_at TEXT DEFAULT (datetime('now', 'localtime')),
         updated_at TEXT DEFAULT (datetime('now', 'localtime')),
         UNIQUE(media_type, source, title)

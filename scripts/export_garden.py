@@ -83,53 +83,47 @@ def write_note(rel_path: str, fm: dict, body: str, dry_run: bool = False) -> Non
     path.write_text(render_frontmatter(fm) + "\n\n" + body.rstrip() + "\n", encoding="utf-8")
 
 
-def build_media_note(mtype: str, title: str, orig, year, author, extra: dict,
-                     status, rating, progress, started, finished, dlog, review, source) -> tuple:
-    """Returns (frontmatter dict, markdown body) for one media log."""
+def build_media_note(mtype: str, title: str, source: str, data: dict) -> tuple:
+    """Returns (frontmatter dict, markdown body) for one media item."""
     _, tags = MEDIA_TARGETS[mtype]
-    date = dlog or finished or started or "2016-01-01"
+    date = (data.get("date_logged") or data.get("finished_at")
+            or data.get("started_at") or "2016-01-01")
 
     fm = {"title": title, "date": date, "tags": tags, "publish_external": False}
-    for key, val in (
-        ("author", author), ("year", year), ("original_title", orig),
-        ("status", status), ("rating", rating), ("progress", progress),
-        ("started", started), ("finished", finished), ("source", source),
-    ):
+    for key in ("author", "year", "original_title", "status", "rating",
+                "progress", "started_at", "finished_at", "source"):
+        val = data.get(key) or (source if key == "source" else None)
         if val not in (None, ""):
             fm[key] = val
 
     lines = [f"# {title}", ""]
-    meta = [(k.capitalize(), v) for k, v in fm.items() if k not in _FM_META_KEYS]
+    meta = [(k.replace("_", " ").capitalize(), v) for k, v in fm.items() if k not in _FM_META_KEYS]
     if meta:
         lines += [f"- **{k}:** {v}" for k, v in meta]
+    review = data.get("review")
     if review:
-        lines += ["", "## Review", "", review]
+        lines += ["", "## Review", "", str(review)]
     return fm, "\n".join(lines)
 
 
 def export_media(conn: sqlite3.Connection, dry_run: bool = False) -> dict:
     cur = conn.cursor()
-    rows = cur.execute("""
-        SELECT i.media_type, i.title, i.original_title, i.year, i.author,
-               i.extra_json, l.status, l.rating, l.progress, l.started_at,
-               l.finished_at, l.date_logged, l.review, l.raw_json, l.source
-        FROM media_items i JOIN media_logs l ON l.media_item_id = i.id
-    """).fetchall()
+    rows = cur.execute(
+        "SELECT media_type, title, source, data_json FROM media_items"
+    ).fetchall()
 
     counts: dict = {}
-    for (mtype, title, orig, year, author, extra_json,
-         status, rating, progress, started, finished, dlog, review, raw_json, source) in rows:
+    for mtype, title, source, data_json in rows:
         if mtype not in MEDIA_TARGETS:
             continue  # unknown media_type: skip rather than crash on new sources
 
         try:
-            extra = json.loads(extra_json or "{}")
+            data = json.loads(data_json or "{}")
         except (json.JSONDecodeError, TypeError):
-            extra = {}
+            data = {}
+        data.setdefault("source", source)
 
-        fm, body = build_media_note(mtype, title, orig, year, author, extra,
-                                    status, rating, progress, started, finished,
-                                    dlog, review, source)
+        fm, body = build_media_note(mtype, title, source, data)
         subdir, _ = MEDIA_TARGETS[mtype]
         rel = str(Path(subdir) / f"{sanitize_filename(title)}.md")
         write_note(rel, fm, body, dry_run)

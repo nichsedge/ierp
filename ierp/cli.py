@@ -571,7 +571,7 @@ def main():
         else:
             records = json.load(sys.stdin)
         result = ingest_media_records(records)
-        print(f"{C_GREEN}Ingested {result['items']} media items / {result['logs']} logs.{C_RESET}")
+        print(f"{C_GREEN}Ingested {result['items']} media items.{C_RESET}")
     elif args.command == "ingest-rows":
         if args.file:
             with open(args.file, "r", encoding="utf-8") as f:
@@ -579,7 +579,7 @@ def main():
         else:
             rows = json.load(sys.stdin)
         result = ingest_rows(args.source, rows)
-        print(f"{C_GREEN}Ingested {result['items']} media items / {result['logs']} logs "
+        print(f"{C_GREEN}Ingested {result['items']} media items "
               f"({result['skipped']} skipped) from {args.source}.{C_RESET}")
     elif args.command == "serve-ingest":
         serve_ingest(port=args.port)
@@ -609,10 +609,10 @@ def main():
         else:
             print(f"\n{C_BOLD}{'ID':<6} | {'Type':<8} | {'Title':<34} | {'Status':<12} | {'Rating':<6} | {'Date':<10}{C_RESET}")
             print("-" * 90)
-            for mid, mtype, title, status, rating, dlog, fin in rows:
-                date = (dlog or fin or "")[:10]
+            for mid, mtype, title, rating, dlog in rows:
+                date = (dlog or "")[:10]
                 rating_s = f"{rating:g}" if rating is not None else ""
-                print(f"{mid:<6} | {(mtype or ''):<8} | {title[:34]:<34} | {(status or '')[:12]:<12} | {rating_s:<6} | {date:<10}")
+                print(f"{mid:<6} | {(mtype or ''):<8} | {title[:34]:<34} | {'':<12} | {rating_s:<6} | {date:<10}")
             print()
     elif args.command == "insert-link":
         init_db()
