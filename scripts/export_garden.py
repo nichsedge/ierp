@@ -32,7 +32,7 @@ GARDEN_CONTENT = os.environ.get("GARDEN_CONTENT", os.path.expanduser("~/Projects
 
 # media_type -> (content subdir, tags)
 MEDIA_TARGETS = {
-    "book": ("Read/Goodreads", ["book"]),
+    "book": ("Read/Hardcover", ["book"]),
     "film": ("Watch/Letterboxd", ["film"]),
     "anime": ("Watch/Anime", ["anime", "film"]),
     "manga": ("Read/Manga", ["manga", "book"]),
