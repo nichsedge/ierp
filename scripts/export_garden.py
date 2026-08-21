@@ -8,25 +8,29 @@ Exports structured data from the ierp SQLite database into Digital Graveyard
 markdown notes. This is the read path: garden content is generated FROM the DB.
 
 Usage:
-    uv run export_from_ierp.py            # regenerate media + links notes
-    uv run export_from_ierp.py --check    # dry-run: report counts only
+    python3 export_garden.py            # regenerate media + links notes
+    python3 export_garden.py --check    # dry-run: report counts only
+
+Environment overrides:
+    IERP_DB          path to ierp events.db      (default: repo-relative)
+    GARDEN_CONTENT   garden content root         (default: ~/Projects/digital-graveyard/content)
 """
 
 import argparse
+import json
 import os
+import re
 import sqlite3
 import sys
-from pathlib import Path
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 import yaml
 
 IERP_DB = os.environ.get("IERP_DB", str(Path(__file__).resolve().parent.parent / "ierp" / "events.db"))
 GARDEN_CONTENT = os.environ.get("GARDEN_CONTENT", os.path.expanduser("~/Projects/digital-graveyard/content"))
-CONTENT_ROOT = GARDEN_CONTENT
 
-# source_key -> (content subdir, tags, frontmatter title prefix)
+# media_type -> (content subdir, tags)
 MEDIA_TARGETS = {
     "book": ("Read/Goodreads", ["book"]),
     "film": ("Watch/Letterboxd", ["film"]),
@@ -37,14 +41,18 @@ MEDIA_TARGETS = {
 
 LINKS_NOTE = "Write/Links.md"
 
+# Frontmatter keys excluded from the markdown meta bullet list.
+_FM_META_KEYS = {"title", "date", "tags", "publish_external"}
 
-def sanitize_filename(text):
-    import re
+
+def sanitize_filename(text: str) -> str:
+    """Filesystem-safe note filename, preserving readability."""
     no_punc = re.sub(r"[^\w\s\-]", " ", str(text))
     return " ".join(no_punc.split()).strip() or "Untitled"
 
 
-def yaml_str(v):
+def yaml_str(v) -> str:
+    """Formats a scalar as Obsidian-safe YAML."""
     if v is None:
         return "null"
     s = str(v).replace("\\", "\\\\").replace('"', '\\"')
@@ -53,28 +61,53 @@ def yaml_str(v):
     return s
 
 
-def write_note(rel_path, frontmatter, body, dry_run=False):
-    path = os.path.join(CONTENT_ROOT, rel_path)
-    if dry_run:
-        print(f"  [dry-run] would write {rel_path}")
-        return
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+def render_frontmatter(fm: dict) -> str:
     lines = ["---"]
-    for k, v in frontmatter.items():
-        if k in ("tags",):
-            lines.append(f"{k}: [{', '.join(v)}]" if v else f"{k}: []")
+    for k, v in fm.items():
+        if k == "tags":
+            lines.append(f"tags: [{', '.join(v)}]" if v else "tags: []")
         elif isinstance(v, bool):
             lines.append(f"{k}: {'true' if v else 'false'}")
         else:
             lines.append(f"{k}: {yaml_str(v)}")
     lines.append("---")
-    lines.append("")
-    lines.append(body.rstrip() + "\n")
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
+    return "\n".join(lines)
 
 
-def export_media(conn, dry_run=False):
+def write_note(rel_path: str, fm: dict, body: str, dry_run: bool = False) -> None:
+    path = Path(GARDEN_CONTENT) / rel_path
+    if dry_run:
+        print(f"  [dry-run] would write {rel_path}")
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_frontmatter(fm) + "\n\n" + body.rstrip() + "\n", encoding="utf-8")
+
+
+def build_media_note(mtype: str, title: str, orig, year, author, extra: dict,
+                     status, rating, progress, started, finished, dlog, review, source) -> tuple:
+    """Returns (frontmatter dict, markdown body) for one media log."""
+    _, tags = MEDIA_TARGETS[mtype]
+    date = dlog or finished or started or "2016-01-01"
+
+    fm = {"title": title, "date": date, "tags": tags, "publish_external": False}
+    for key, val in (
+        ("author", author), ("year", year), ("original_title", orig),
+        ("status", status), ("rating", rating), ("progress", progress),
+        ("started", started), ("finished", finished), ("source", source),
+    ):
+        if val not in (None, ""):
+            fm[key] = val
+
+    lines = [f"# {title}", ""]
+    meta = [(k.capitalize(), v) for k, v in fm.items() if k not in _FM_META_KEYS]
+    if meta:
+        lines += [f"- **{k}:** {v}" for k, v in meta]
+    if review:
+        lines += ["", "## Review", "", review]
+    return fm, "\n".join(lines)
+
+
+def export_media(conn: sqlite3.Connection, dry_run: bool = False) -> dict:
     cur = conn.cursor()
     rows = cur.execute("""
         SELECT i.media_type, i.title, i.original_title, i.year, i.author,
@@ -83,62 +116,39 @@ def export_media(conn, dry_run=False):
         FROM media_items i JOIN media_logs l ON l.media_item_id = i.id
     """).fetchall()
 
-    counts = {}
+    counts: dict = {}
     for (mtype, title, orig, year, author, extra_json,
          status, rating, progress, started, finished, dlog, review, raw_json, source) in rows:
-        target = MEDIA_TARGETS.get(mtype)
-        if not target:
-            continue
-        subdir, tags = target
-        extra = {}
+        if mtype not in MEDIA_TARGETS:
+            continue  # unknown media_type: skip rather than crash on new sources
+
         try:
-            extra = {k: v for k, v in __import__("json").loads(extra_json or "{}").items()}
-        except Exception:
-            pass
+            extra = json.loads(extra_json or "{}")
+        except (json.JSONDecodeError, TypeError):
+            extra = {}
 
-        date = dlog or finished or started or "2016-01-01"
-        fm = {
-            "title": title,
-            "date": date,
-            "tags": tags,
-            "publish_external": False,
-        }
-        for key, val in (
-            ("author", author), ("year", year), ("original_title", orig),
-            ("status", status), ("rating", rating), ("progress", progress),
-            ("started", started), ("finished", finished),
-            ("source", source),
-        ):
-            if val not in (None, ""):
-                fm[key] = val
-
-        lines = [f"# {title}", ""]
-        meta = [(k.capitalize(), v) for k, v in fm.items()
-                if k not in ("title", "date", "tags", "publish_external")]
-        if meta:
-            lines += [f"- **{k}:** {v}" for k, v in meta]
-        if review:
-            lines += ["", "## Review", "", review]
-
-        rel = os.path.join(subdir, f"{sanitize_filename(title)}.md")
-        write_note(rel, fm, "\n".join(lines), dry_run)
+        fm, body = build_media_note(mtype, title, orig, year, author, extra,
+                                    status, rating, progress, started, finished,
+                                    dlog, review, source)
+        subdir, _ = MEDIA_TARGETS[mtype]
+        rel = str(Path(subdir) / f"{sanitize_filename(title)}.md")
+        write_note(rel, fm, body, dry_run)
         counts[mtype] = counts.get(mtype, 0) + 1
     return counts
 
 
-def export_links(conn, dry_run=False):
-    cur = conn.cursor()
-    rows = cur.execute(
+def export_links(conn: sqlite3.Connection, dry_run: bool = False) -> int:
+    rows = conn.execute(
         "SELECT label, url, category, is_public FROM links ORDER BY category, label"
     ).fetchall()
-    by_cat = {}
+
+    by_cat: dict = {}
     for label, url, cat, pub in rows:
         by_cat.setdefault(cat or "Other", []).append((label, url, pub))
 
     body_lines = ["# Links", ""]
     for cat in sorted(by_cat):
-        body_lines.append(f"## {cat}")
-        body_lines.append("")
+        body_lines += [f"## {cat}", ""]
         for label, url, pub in by_cat[cat]:
             body_lines.append(f"* **{label}:** {url}" + ("" if pub else " *(private)*"))
         body_lines.append("")
@@ -153,17 +163,17 @@ def export_links(conn, dry_run=False):
     return len(rows)
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Export ierp DB -> Digital Graveyard notes")
     parser.add_argument("--check", action="store_true", help="Dry run")
     args = parser.parse_args()
 
-    if not os.path.exists(IERP_DB):
-        print(f"ierp DB not found at {IERP_DB}")
-        sys.exit(1)
+    db = Path(IERP_DB)
+    if not db.exists():
+        print(f"ierp DB not found at {db}", file=sys.stderr)
+        return 1
 
-    # Read-only connection
-    conn = sqlite3.connect(f"file:{IERP_DB}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:
         counts = export_media(conn, args.check)
         n_links = export_links(conn, args.check)
@@ -175,7 +185,8 @@ def main():
     for mtype, n in sorted(counts.items()):
         print(f"  - {mtype:8}: {n:4d} notes")
     print(f"  - links  : {n_links} entries -> {LINKS_NOTE}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

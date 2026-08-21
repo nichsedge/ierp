@@ -6,75 +6,73 @@ the portfolio's data/ JSON files (identical schema, zero app changes).
 Usage:
     python3 export_commerce.py            # writes pay.json + referrals.json
     python3 export_commerce.py --check    # dry run
+
+Environment overrides:
+    IERP_DB         path to ierp events.db   (default: repo-relative)
+    PORTFOLIO_DATA  portfolio data dir       (default: ~/Projects/nichsedge.github.io/data)
 """
 
 import argparse
 import json
 import os
 import sqlite3
+import sys
+from pathlib import Path
 
-IERP_DB = os.environ.get("IERP_DB", os.path.expanduser("~/Projects/ierp/ierp/events.db"))
+IERP_DB = os.environ.get("IERP_DB", str(Path(__file__).resolve().parent.parent / "ierp" / "events.db"))
 PORTFOLIO_DATA = os.environ.get(
     "PORTFOLIO_DATA",
     os.path.expanduser("~/Projects/nichsedge.github.io/data"),
 )
 
 
-def export_pay(conn):
+def export_pay(conn: sqlite3.Connection) -> list:
     rows = conn.execute(
         "SELECT slug, name, category, number, recipient, details, details_id "
         "FROM payment_accounts ORDER BY id"
     ).fetchall()
-    return [
-        {
-            "id": slug, "name": name, "category": category,
-            "number": number, "recipient": recipient,
-            "details": details, "details_id": details_id,
-        }
-        for slug, name, category, number, recipient, details, details_id in rows
-    ]
+    keys = ("id", "name", "category", "number", "recipient", "details", "details_id")
+    return [dict(zip(keys, row)) for row in rows]
 
 
-def export_referrals(conn):
+def export_referrals(conn: sqlite3.Connection) -> list:
     rows = conn.execute(
         "SELECT slug, name, category, code, link, benefit, status "
         "FROM referrals WHERE is_public = 1 ORDER BY id"
     ).fetchall()
-    return [
-        {
-            "id": slug, "name": name, "category": category,
-            "code": code, "link": link, "benefit": benefit, "status": status,
-        }
-        for slug, name, category, code, link, benefit, status in rows
-    ]
+    keys = ("id", "name", "category", "code", "link", "benefit", "status")
+    return [dict(zip(keys, row)) for row in rows]
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--check", action="store_true")
+    parser.add_argument("--check", action="store_true", help="Dry run: report counts only")
     args = parser.parse_args()
 
-    conn = sqlite3.connect(f"file:{IERP_DB}?mode=ro", uri=True)
+    db = Path(IERP_DB)
+    if not db.exists():
+        print(f"ierp DB not found at {db}", file=sys.stderr)
+        return 1
+
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:
-        pay = export_pay(conn)
-        referrals = export_referrals(conn)
+        targets = {
+            "pay.json": export_pay(conn),
+            "referrals.json": export_referrals(conn),
+        }
     finally:
         conn.close()
 
-    targets = {
-        "pay.json": pay,
-        "referrals.json": referrals,
-    }
+    data_dir = Path(PORTFOLIO_DATA)
     for fname, data in targets.items():
-        path = os.path.join(PORTFOLIO_DATA, fname)
-        payload = json.dumps(data, indent=1, ensure_ascii=False) + "\n"
+        path = data_dir / fname
         if args.check:
             print(f"[dry-run] would write {len(data)} records -> {path}")
             continue
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(payload)
+        path.write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
         print(f"Wrote {len(data)} records -> {path}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

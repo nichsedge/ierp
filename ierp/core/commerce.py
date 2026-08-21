@@ -3,12 +3,16 @@ Payment accounts & referral codes engine for iERP (stdlib only).
 Tables: payment_accounts (private financial rails), referrals (public referral codes).
 """
 
-import json
 import sqlite3
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from .config import DB_PATH
+
+from .db import get_db
+
+_PAY_FIELDS = ("name", "category", "number", "recipient", "details", "details_id")
+_REFERRAL_FIELDS = ("name", "category", "code", "link", "benefit", "status", "is_public")
 
 
 def _now() -> str:
@@ -51,6 +55,14 @@ def init_tables(cursor: sqlite3.Cursor) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_referrals_status ON referrals(status);")
 
 
+def _coalesce_update(table: str, fields: tuple, row_id: int,
+                     values: dict, cursor: sqlite3.Cursor) -> None:
+    """Partial-record-safe UPDATE: only non-NULL values overwrite."""
+    assignments = ", ".join(f"{f} = COALESCE(?, {f})" for f in fields)
+    params = [values.get(f) for f in fields] + [_now(), row_id]
+    cursor.execute(f"UPDATE {table} SET {assignments}, updated_at = ? WHERE id = ?", params)
+
+
 def upsert_payment_account(
     cursor: sqlite3.Cursor,
     slug: str,
@@ -62,20 +74,17 @@ def upsert_payment_account(
     details_id: Optional[str] = None,
 ) -> int:
     """Idempotent upsert keyed by slug. Returns payment_accounts.id."""
+    values = dict(zip(_PAY_FIELDS, (name, category, number, recipient, details, details_id)))
     cursor.execute("SELECT id FROM payment_accounts WHERE slug = ?", (slug,))
     row = cursor.fetchone()
     if row:
         pid = int(row[0])
-        cursor.execute("""
-            UPDATE payment_accounts
-            SET name = ?, category = ?, number = ?, recipient = ?, details = ?, details_id = ?, updated_at = ?
-            WHERE id = ?
-        """, (name, category, number, recipient, details, details_id, _now(), pid))
+        _coalesce_update("payment_accounts", _PAY_FIELDS, pid, values, cursor)
         return pid
     cursor.execute("""
         INSERT INTO payment_accounts (slug, name, category, number, recipient, details, details_id)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (slug, name, category, number, recipient, details, details_id))
+    """, (slug, *values.values()))
     return int(cursor.lastrowid or 0)
 
 
@@ -91,47 +100,43 @@ def upsert_referral(
     is_public: bool = True,
 ) -> int:
     """Idempotent upsert keyed by slug. Returns referrals.id."""
+    values = dict(zip(_REFERRAL_FIELDS, (name, category, code, link, benefit, status,
+                                         1 if is_public else 0)))
     cursor.execute("SELECT id FROM referrals WHERE slug = ?", (slug,))
     row = cursor.fetchone()
     if row:
         rid = int(row[0])
-        cursor.execute("""
-            UPDATE referrals
-            SET name = ?, category = ?, code = ?, link = ?, benefit = ?, status = ?, is_public = ?, updated_at = ?
-            WHERE id = ?
-        """, (name, category, code, link, benefit, status, 1 if is_public else 0, _now(), rid))
+        _coalesce_update("referrals", _REFERRAL_FIELDS, rid, values, cursor)
         return rid
     cursor.execute("""
         INSERT INTO referrals (slug, name, category, code, link, benefit, status, is_public)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (slug, name, category, code, link, benefit, status, 1 if is_public else 0))
+    """, (slug, *values.values()))
     return int(cursor.lastrowid or 0)
 
 
+def _query(db_path: Optional[Path], sql: str, params: list) -> list:
+    """Ensures schema exists, then runs a read query on a short-lived connection."""
+    with closing(get_db(db_path)) as conn:
+        init_tables(conn.cursor())
+        return conn.execute(sql, params).fetchall()
+
+
 def list_payment_accounts(category: Optional[str] = None, db_path: Optional[Path] = None) -> list:
-    from .db import get_db
-    conn = get_db(db_path)
-    cursor = conn.cursor()
-    init_tables(cursor)
     sql = "SELECT id, slug, name, category, number, recipient FROM payment_accounts"
-    params = []
+    params: list = []
     if category:
         sql += " WHERE category = ?"
         params.append(category)
     sql += " ORDER BY category, name"
-    rows = cursor.execute(sql, params).fetchall()
-    conn.close()
-    return rows
+    return _query(db_path, sql, params)
 
 
 def list_referrals(category: Optional[str] = None, status: Optional[str] = None,
                    public_only: bool = False, db_path: Optional[Path] = None) -> list:
-    from .db import get_db
-    conn = get_db(db_path)
-    cursor = conn.cursor()
-    init_tables(cursor)
-    sql = "SELECT id, slug, name, category, code, link, benefit, status, is_public FROM referrals WHERE 1=1"
-    params = []
+    sql = ("SELECT id, slug, name, category, code, link, benefit, status, is_public "
+           "FROM referrals WHERE 1=1")
+    params: list = []
     if category:
         sql += " AND category = ?"
         params.append(category)
@@ -141,6 +146,4 @@ def list_referrals(category: Optional[str] = None, status: Optional[str] = None,
     if public_only:
         sql += " AND is_public = 1"
     sql += " ORDER BY category, name"
-    rows = cursor.execute(sql, params).fetchall()
-    conn.close()
-    return rows
+    return _query(db_path, sql, params)
