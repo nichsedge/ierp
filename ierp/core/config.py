@@ -13,15 +13,35 @@ GOOGLE_CREDS_PATH = BASE_DIR / "google_credentials.json"
 GOOGLE_TOKEN_PATH = BASE_DIR / "google_token.json"
 GEO_CACHE_PATH = BASE_DIR / "geocode_cache.json"
 
-# Media tracker profiles (used by `ierp sync`)
-MEDIA_PROFILES = {
-    "hardcover": {"username": "nichsedge"},
-    "goodreads": {"user_id": "74584614"},
-    "letterboxd": {"username": "PenyulTekowel"},
-    "anilist_anime": {"username": "laataiasu"},
-    "anilist_manga": {"username": "laataiasu"},
-    "mydramalist": {"username": "Chanculus"},
-}
+# Media tracker profiles (used by `ierp sync`).
+# Values are read from environment variables, loaded from ~/.secrets or ierp/.env
+# (see fetchers.load_environment). Format: IERP_<SOURCE>__<FIELD>, e.g.
+#   IERP_GOODREADS__USER_ID=74584614
+#   IERP_HARDCOVER__USERNAME=nichsedge
+#   HARDCOVER_API_KEY=...   (token; may include the "Bearer " prefix)
+_MEDIA_ENV_PREFIX = "IERP_"
+
+
+def _media_profile(source: str, fields: dict) -> dict:
+    """fields: {arg_name: env_suffix}. Env value wins over the default."""
+    import os
+    out = {}
+    for arg, suffix in fields.items():
+        val = os.environ.get(f"{_MEDIA_ENV_PREFIX}{source.upper().replace('-', '_')}__{suffix}")
+        out[arg] = val if val else fields[arg]
+    return out
+
+
+def media_profiles() -> dict:
+    """Resolves media tracker profiles from env with hardcoded fallbacks."""
+    return {
+        "hardcover": _media_profile("hardcover", {"username": "nichsedge"}),
+        "goodreads": _media_profile("goodreads", {"user_id": "74584614"}),
+        "letterboxd": _media_profile("letterboxd", {"username": "PenyulTekowel"}),
+        "anilist_anime": _media_profile("anilist_anime", {"username": "laataiasu"}),
+        "anilist_manga": _media_profile("anilist_manga", {"username": "laataiasu"}),
+        "mydramalist": _media_profile("mydramalist", {"username": "Chanculus"}),
+    }
 
 # ANSI Terminal Color Tokens
 C_RESET = "\033[0m"

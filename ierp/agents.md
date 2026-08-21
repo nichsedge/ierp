@@ -17,9 +17,16 @@ The system is modularized under `ierp/core/` with single-command execution throu
   - `ierp/core/geocoding.py`: OpenStreetMap Nominatim reverse-geocoder with rate-limiting and persistent disk caching.
   - `ierp/core/importers.py`: Parsers for Notion CSV/Markdown exports & Google Maps Semantic Location History JSON.
   - `ierp/core/dashboard.py`: Single-page interactive web dashboard, JSON REST API, and OwnTracks GPS webhook receiver.
+  - `ierp/core/media.py`: Media consumption engine — `media_items` + `media_logs` tables (books/films/anime/manga/dramas), idempotent upserts keyed on (media_type, source, title); also manages the `links` table (profile/social/reference URLs with `is_public` flag).
+  - `ierp/core/commerce.py`: `payment_accounts` + `referrals` tables (portfolio commerce data; source of truth for nichsedge.github.io `data/pay.json` & `data/referrals.json`).
+  - `ierp/core/sources.py`: Normalization of raw tracker rows onto the ierp media schema. `SOURCE_MAP` + `FIELD_CANDIDATES`/`DATE_CANDIDATES` tables are the single place to touch when a source renames columns.
+  - `ierp/core/fetchers.py`: Stdlib-only fetchers for external trackers (Hardcover/AniList GraphQL, Goodreads RSS, Letterboxd & MyDramaList scraping). No pandas/requests/bs4.
+  - `ierp/core/ingest.py`: Ingestion bridge — `ingest_rows()` library entry + `serve-ingest` local HTTP endpoint (`POST /ingest/<source_key>` with raw rows JSON).
+  - `ierp/core/sync.py`: Sync orchestrator — fetch -> normalize -> ingest per source; one source failing doesn't block the rest.
 - **Automated Tests**: [ierp/tests/test_ierp.py](file:///home/al/Projects/ierp/ierp/tests/test_ierp.py)
 - **Database**: `ierp/events.db` (SQLite with `WAL` journaling mode, git-ignored)
 - **Media Attachments**: `ierp/events_media/` (Local folder, git-ignored)
+- **Exporters** (`scripts/`, run from repo root): `export_garden.py` regenerates digital-graveyard media/links notes from the DB; `export_commerce.py` regenerates the portfolio's `pay.json`/`referrals.json`. Both open the DB read-only and honor the `IERP_DB` env override.
 
 ---
 
@@ -113,6 +120,27 @@ The system is modularized under `ierp/core/` with single-command execution throu
   ```bash
   uv run ierp dashboard [--port 8000] [--no-browser]
   ```
+
+### 10. Media Consumption Sync (Books/Films/Anime/Manga/Dramas)
+- ierp owns the full media pipeline: fetch from trackers, normalize, store in `media_items`/`media_logs`.
+- **Sync all sources** (see `sync --list` for resolved profiles):
+  ```bash
+  uv run ierp sync
+  ```
+- **Sync one source** (repeatable flag):
+  ```bash
+  uv run ierp sync --source goodreads --source letterboxd
+  ```
+- Known sources: `hardcover`, `goodreads`, `letterboxd`, `anilist_anime`, `anilist_manga`, `mydramalist`.
+- **Profiles/IDs come from env, not hardcoded config**: `IERP_<SOURCE>__<FIELD>` (e.g. `IERP_GOODREADS__USER_ID`), loaded from `~/.secrets` or `ierp/.env` (see `.env.example`). Hardcoded values in `config.py` are fallbacks only. `HARDCOVER_API_KEY` is required for hardcover and may already include the `Bearer ` prefix — do not double-prefix.
+- **HTTP ingestion mode** (for external tools): `uv run ierp serve-ingest [--port 8765]`, then `POST /ingest/<source_key>` with a JSON array of raw rows.
+- **Raw-row CLI ingestion**: `uv run ierp ingest-rows <source> <file.json>` (file or stdin).
+- **Regenerate downstream artifacts** (run from repo root):
+  ```bash
+  python3 scripts/export_garden.py      # digital-graveyard media/links notes
+  python3 scripts/export_commerce.py    # portfolio pay.json + referrals.json
+  ```
+- Upserts are idempotent keyed on (media_type, source, title); partial records never erase existing values (COALESCE semantics).
 
 ---
 

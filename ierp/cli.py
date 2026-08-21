@@ -36,7 +36,7 @@ from ierp.core.commerce import (
 )
 from ierp.core.ingest import ingest_rows, serve_ingest
 from ierp.core.sync import sync_all
-from ierp.core.config import MEDIA_PROFILES
+from ierp.core.config import media_profiles
 
 
 def insert_event_direct(
@@ -584,12 +584,15 @@ def main():
     elif args.command == "serve-ingest":
         serve_ingest(port=args.port)
     elif args.command == "sync":
+        from ierp.core.fetchers import _load_env
+        _load_env()
+        profiles = media_profiles()
         if args.list:
-            print("Configured media sources:")
-            for key, profile in MEDIA_PROFILES.items():
+            print("Configured media sources (env override: IERP_<SOURCE>__<FIELD>):")
+            for key, profile in profiles.items():
                 print(f"  - {key:15} {profile}")
             return
-        results = sync_all(MEDIA_PROFILES, sources=args.sources)
+        results = sync_all(profiles, sources=args.sources)
         failed = 0
         for r in results:
             if r["ok"]:
