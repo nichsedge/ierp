@@ -21,7 +21,7 @@ SOURCE_MAP = {
 
 # When the same normalized title exists from multiple sources within a
 # media_type, only rows from the first source listed here are kept.
-# (Hardcover is the preferred book source; goodreads is fallback-only.)
+# (Hardcover is the ONLY book source; goodreads fetcher is unused for sync.)
 SOURCE_PREFERENCE = {
     "book": ("hardcover", "goodreads"),
 }
