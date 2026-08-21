@@ -77,14 +77,14 @@ def write_note(rel_path, frontmatter, body, dry_run=False):
 def export_media(conn, dry_run=False):
     cur = conn.cursor()
     rows = cur.execute("""
-        SELECT i.media_type, i.title, i.original_title, i.year, i.author, i.country,
-               i.url, i.extra_json, l.status, l.rating, l.progress, l.started_at,
+        SELECT i.media_type, i.title, i.original_title, i.year, i.author,
+               i.extra_json, l.status, l.rating, l.progress, l.started_at,
                l.finished_at, l.date_logged, l.review, l.raw_json, l.source
         FROM media_items i JOIN media_logs l ON l.media_item_id = i.id
     """).fetchall()
 
     counts = {}
-    for (mtype, title, orig, year, author, country, url, extra_json,
+    for (mtype, title, orig, year, author, extra_json,
          status, rating, progress, started, finished, dlog, review, raw_json, source) in rows:
         target = MEDIA_TARGETS.get(mtype)
         if not target:
@@ -104,9 +104,9 @@ def export_media(conn, dry_run=False):
             "publish_external": False,
         }
         for key, val in (
-            ("author", author), ("year", year), ("country", country),
+            ("author", author), ("year", year), ("original_title", orig),
             ("status", status), ("rating", rating), ("progress", progress),
-            ("started", started), ("finished", finished), ("url", url),
+            ("started", started), ("finished", finished),
             ("source", source),
         ):
             if val not in (None, ""):

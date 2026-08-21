@@ -24,29 +24,19 @@ def upsert_media_item(
     original_title: Optional[str] = None,
     year: Optional[int] = None,
     author: Optional[str] = None,
-    country: Optional[str] = None,
-    external_id: Optional[str] = None,
     source: Optional[str] = None,
-    url: Optional[str] = None,
     extra: Optional[dict] = None,
 ) -> int:
     """
-    Idempotently upserts a media item keyed by (media_type, source, external_id).
-    Falls back to (media_type, title) matching when external_id is missing.
+    Idempotently upserts a media item keyed by (media_type, source, title).
     Returns the media_items.id.
     """
     extra_json = json.dumps(extra, ensure_ascii=False, default=str) if extra else None
 
-    if external_id:
-        cursor.execute(
-            "SELECT id FROM media_items WHERE media_type = ? AND source = ? AND external_id = ?",
-            (media_type, source, str(external_id)),
-        )
-    else:
-        cursor.execute(
-            "SELECT id FROM media_items WHERE media_type = ? AND title = ? AND (external_id IS NULL OR external_id = '')",
-            (media_type, title),
-        )
+    cursor.execute(
+        "SELECT id FROM media_items WHERE media_type = ? AND source IS ? AND title = ?",
+        (media_type, source, title),
+    )
 
     row = cursor.fetchone()
     if row:
@@ -54,17 +44,16 @@ def upsert_media_item(
         cursor.execute("""
             UPDATE media_items
             SET title = ?, original_title = COALESCE(?, original_title), year = COALESCE(?, year),
-                author = COALESCE(?, author), country = COALESCE(?, country), url = COALESCE(?, url),
+                author = COALESCE(?, author),
                 extra_json = COALESCE(?, extra_json), updated_at = ?
             WHERE id = ?
-        """, (title, original_title, year, author, country, url, extra_json, _now(), item_id))
+        """, (title, original_title, year, author, extra_json, _now(), item_id))
         return item_id
 
     cursor.execute("""
-        INSERT INTO media_items (media_type, title, original_title, year, author, country, external_id, source, url, extra_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (media_type, title, original_title, year, author, country,
-          str(external_id) if external_id else None, source, url, extra_json))
+        INSERT INTO media_items (media_type, title, original_title, year, author, source, extra_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (media_type, title, original_title, year, author, source, extra_json))
     return int(cursor.lastrowid or 0)
 
 
@@ -115,7 +104,7 @@ def ingest_media_records(records: list, db_path: Optional[Path] = None) -> dict:
     """
     Bulk-ingests normalized media records from get-data.
     Each record dict supports:
-      media_type, title, original_title, year, author, country, external_id, source, url,
+      media_type, title, original_title, year, author, source,
       extra (dict), status, rating, progress, started_at, finished_at, date_logged, review, raw (dict)
     Returns {"items": n, "logs": n}.
     """
@@ -133,10 +122,7 @@ def ingest_media_records(records: list, db_path: Optional[Path] = None) -> dict:
                 original_title=rec.get("original_title"),
                 year=rec.get("year"),
                 author=rec.get("author"),
-                country=rec.get("country"),
-                external_id=rec.get("external_id"),
                 source=rec.get("source"),
-                url=rec.get("url"),
                 extra=rec.get("extra"),
             )
             items += 1

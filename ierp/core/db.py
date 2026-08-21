@@ -114,14 +114,11 @@ def init_db(db_path: Optional[Path] = None, verbose: bool = False) -> None:
         original_title TEXT,
         year INTEGER,
         author TEXT,
-        country TEXT,
-        external_id TEXT,
         source TEXT,
-        url TEXT,
         extra_json TEXT,
         created_at TEXT DEFAULT (datetime('now', 'localtime')),
         updated_at TEXT DEFAULT (datetime('now', 'localtime')),
-        UNIQUE(media_type, source, external_id)
+        UNIQUE(media_type, source, title)
     );
     """)
 
@@ -253,7 +250,7 @@ def init_db(db_path: Optional[Path] = None, verbose: bool = False) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_vendors_favorite ON vendors(favorite);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_items_type ON media_items(media_type);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_items_title ON media_items(title);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_items_ext ON media_items(source, external_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_items_src ON media_items(source, title);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_logs_item ON media_logs(media_item_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_logs_date ON media_logs(date_logged);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_links_category ON links(category);")
