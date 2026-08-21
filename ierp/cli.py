@@ -29,6 +29,12 @@ from ierp.core.linking import link_events_and_contacts, run_manual_link
 from ierp.core.merging import merge_two_contacts, auto_merge_contacts
 from ierp.core.dashboard import start_dashboard_server
 from ierp.core.media import ingest_media_records, upsert_link, list_media, list_links
+from ierp.core.commerce import (
+    init_tables as init_commerce_tables,
+    upsert_payment_account, upsert_referral,
+    list_payment_accounts, list_referrals,
+)
+import sqlite3 as _sqlite3
 
 
 def insert_event_direct(
@@ -479,6 +485,20 @@ def main():
     links_parser.add_argument("--category", help="Filter by category")
     links_parser.add_argument("--public-only", action="store_true")
 
+    import_pay_parser = subparsers.add_parser("import-pay", help="Import payment accounts from portfolio pay.json")
+    import_pay_parser.add_argument("file", help="Path to pay.json")
+
+    import_referrals_parser = subparsers.add_parser("import-referrals", help="Import referrals from portfolio referrals.json")
+    import_referrals_parser.add_argument("file", help="Path to referrals.json")
+
+    pay_parser = subparsers.add_parser("pay", help="List payment accounts")
+    pay_parser.add_argument("--category", help="Filter by category")
+
+    referrals_parser = subparsers.add_parser("referrals", help="List referral codes")
+    referrals_parser.add_argument("--category", help="Filter by category")
+    referrals_parser.add_argument("--status", help="Filter by status (ACTIVE, OFFLINE, ...)")
+    referrals_parser.add_argument("--public-only", action="store_true")
+
     args = parser.parse_args()
 
     if args.command == "init":
@@ -564,6 +584,54 @@ def main():
             print("-" * 100)
             for lid, label, url, cat, pub in rows:
                 print(f"{lid:<5} | {label[:28]:<28} | {(cat or '')[:12]:<12} | {'yes' if pub else 'no':<6} | {url}")
+            print()
+    elif args.command == "import-pay":
+        init_db()
+        with open(args.file, "r", encoding="utf-8") as f:
+            items = json.load(f)
+        conn = _sqlite3.connect(str(DB_PATH), timeout=10.0)
+        cur = conn.cursor()
+        init_commerce_tables(cur)
+        for it in items:
+            upsert_payment_account(cur, slug=it.get("id") or it.get("name"), name=it["name"],
+                                   category=it.get("category"), number=it.get("number"),
+                                   recipient=it.get("recipient"), details=it.get("details"),
+                                   details_id=it.get("details_id"))
+        conn.commit(); conn.close()
+        print(f"{C_GREEN}Imported {len(items)} payment accounts.{C_RESET}")
+    elif args.command == "import-referrals":
+        init_db()
+        with open(args.file, "r", encoding="utf-8") as f:
+            items = json.load(f)
+        conn = _sqlite3.connect(str(DB_PATH), timeout=10.0)
+        cur = conn.cursor()
+        init_commerce_tables(cur)
+        for it in items:
+            upsert_referral(cur, slug=it.get("id") or it.get("name"), name=it["name"],
+                            category=it.get("category"), code=it.get("code"),
+                            link=it.get("link"), benefit=it.get("benefit"),
+                            status=it.get("status"))
+        conn.commit(); conn.close()
+        print(f"{C_GREEN}Imported {len(items)} referrals.{C_RESET}")
+    elif args.command == "pay":
+        rows = list_payment_accounts(category=args.category)
+        if not rows:
+            print("No payment accounts found.")
+        else:
+            print(f"\n{C_BOLD}{'ID':<4} | {'Slug':<12} | {'Name':<32} | {'Category':<20} | {'Number':<18} | Recipient{C_RESET}")
+            print("-" * 110)
+            for pid, slug, name, cat, number, recipient in rows:
+                print(f"{pid:<4} | {(slug or '')[:12]:<12} | {name[:32]:<32} | {(cat or '')[:20]:<20} | {(number or '')[:18]:<18} | {recipient or ''}")
+            print()
+    elif args.command == "referrals":
+        rows = list_referrals(category=args.category, status=args.status, public_only=args.public_only)
+        if not rows:
+            print("No referrals found.")
+        else:
+            print(f"\n{C_BOLD}{'ID':<4} | {'Name':<18} | {'Category':<22} | {'Status':<8} | {'Code':<22} | Link{C_RESET}")
+            print("-" * 110)
+            for rid, slug, name, cat, code, link, benefit, status, pub in rows:
+                print(f"{rid:<4} | {name[:18]:<18} | {(cat or '')[:22]:<22} | {(status or '')[:8]:<8} | {(code or '')[:22]:<22} | {link or ''}")
             print()
     else:
         parser.print_help()
