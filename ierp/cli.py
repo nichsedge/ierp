@@ -46,7 +46,8 @@ def insert_event_direct(
     end_date: Optional[str] = None,
     tags: Optional[str] = None,
     url: Optional[str] = None,
-    notes: Optional[str] = None
+    notes: Optional[str] = None,
+    contacts: Optional[list] = None
 ) -> None:
     """Inserts a structured event record directly into SQLite."""
     init_db()
@@ -65,11 +66,45 @@ def insert_event_direct(
         conn.commit()
         ev_id = cursor.lastrowid
         print(f"{C_GREEN}Successfully inserted event #{ev_id}: {title}{C_RESET}")
+        linked = []
+        for ref in (contacts or []):
+            cid, cname = _resolve_contact(cursor, ref)
+            if cid is None:
+                print(f"{C_YELLOW}Contact not found: {ref}{C_RESET}")
+                continue
+            cursor.execute(
+                "INSERT OR IGNORE INTO event_contacts (event_id, contact_id) VALUES (?, ?)",
+                (ev_id, cid))
+            linked.append(cname)
+        if linked:
+            conn.commit()
+            print(f"{C_GREEN}Explicitly linked: {', '.join(linked)}{C_RESET}")
         link_events_and_contacts(conn)
     except Exception as e:
         print(f"{C_RED}Failed to insert event: {e}{C_RESET}")
     finally:
         conn.close()
+
+
+def _resolve_contact(cursor, ref: str) -> tuple:
+    """Resolves a contact by numeric ID or exact/case-insensitive name. Returns (id, name) or (None, None)."""
+    ref = str(ref).strip()
+    if ref.isdigit():
+        row = cursor.execute("SELECT id, name FROM contacts WHERE id = ?", (int(ref),)).fetchone()
+        if row:
+            return int(row[0]), row[1]
+    row = cursor.execute(
+        "SELECT id, name FROM contacts WHERE LOWER(name) = LOWER(?)", (ref,)
+    ).fetchone()
+    if row:
+        return int(row[0]), row[1]
+    # fallback: unique substring match
+    rows = cursor.execute(
+        "SELECT id, name FROM contacts WHERE name LIKE ?", (f"%{ref}%",)
+    ).fetchall()
+    if len(rows) == 1:
+        return int(rows[0][0]), rows[0][1]
+    return (None, None)
 
 
 def list_events(limit: int = 20) -> None:
@@ -430,6 +465,8 @@ def main():
     insert_parser.add_argument("--tags", help="Comma separated tags")
     insert_parser.add_argument("--url", help="Event URL")
     insert_parser.add_argument("--notes", help="Event notes/body content")
+    insert_parser.add_argument("--contact", action="append", dest="contacts",
+                               help="Explicitly link this contact (name or ID; repeatable)")
 
     list_parser = subparsers.add_parser("list", help="List recent events")
     list_parser.add_argument("--limit", type=int, default=20, help="Number of items to show")
@@ -533,7 +570,7 @@ def main():
     elif args.command == "link":
         run_manual_link()
     elif args.command == "insert":
-        insert_event_direct(args.title, args.place, args.start_date, args.end_date, args.tags, args.url, args.notes)
+        insert_event_direct(args.title, args.place, args.start_date, args.end_date, args.tags, args.url, args.notes, contacts=args.contacts)
     elif args.command == "list":
         list_events(args.limit)
     elif args.command == "contacts":
