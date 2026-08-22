@@ -34,9 +34,18 @@ GARDEN_CONTENT = os.environ.get("GARDEN_CONTENT", os.path.expanduser("~/Projects
 MEDIA_TARGETS = {
     "book": ("Read/Hardcover", ["book"]),
     "film": ("Watch/Letterboxd", ["film"]),
-    "anime": ("Watch/Anime", ["anime", "film"]),
-    "manga": ("Read/Manga", ["manga", "book"]),
-    "drama": ("Watch/Drama", ["film", "drama"]),
+    "anime": ("Watch/Anime", ["anime"]),
+    "manga": ("Read/Manga", ["manga"]),
+    "drama": ("Watch/Drama", ["drama"]),
+}
+
+# Only export from active tracker sources per media type
+ALLOWED_SOURCES = {
+    "book": {"hardcover"},
+    "film": {"letterboxd"},
+    "anime": {"anilist"},
+    "manga": {"anilist"},
+    "drama": {"mydramalist"},
 }
 
 LINKS_NOTE = "Write/Links.md"
@@ -51,23 +60,50 @@ def sanitize_filename(text: str) -> str:
     return " ".join(no_punc.split()).strip() or "Untitled"
 
 
-def yaml_str(v) -> str:
-    """Formats a scalar as Obsidian-safe YAML (always quoted)."""
+def format_yaml_value(v) -> str:
+    """Formats a scalar matching digital-graveyard standards."""
     if v is None:
         return "null"
-    s = str(v).replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{s}"'
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return str(v)
+    s = str(v).strip()
+    try:
+        int(s)
+        return s
+    except ValueError:
+        pass
+    try:
+        float(s)
+        return s
+    except ValueError:
+        pass
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+        return s
+    s_escaped = s.replace(chr(92), chr(92)+chr(92)).replace(chr(34), chr(92)+chr(34))
+    return f'"{s_escaped}"'
 
 
 def render_frontmatter(fm: dict) -> str:
     lines = ["---"]
+    primary = ["title", "date", "tags", "publish_external"]
+    for k in primary:
+        if k in fm:
+            v = fm[k]
+            if k == "title":
+                s_escaped = str(v).replace(chr(92), chr(92)+chr(92)).replace(chr(34), chr(92)+chr(34))
+                lines.append(f'title: "{s_escaped}"')
+            elif k == "tags":
+                lines.append(f"tags: [{', '.join(v)}]" if v else "tags: []")
+            elif k == "publish_external":
+                lines.append(f"publish_external: {'true' if v else 'false'}")
+            elif k == "date":
+                lines.append(f"date: {str(v)}")
+
     for k, v in fm.items():
-        if k == "tags":
-            lines.append(f"tags: [{', '.join(v)}]" if v else "tags: []")
-        elif isinstance(v, bool):
-            lines.append(f"{k}: {'true' if v else 'false'}")
-        else:
-            lines.append(f"{k}: {yaml_str(v)}")
+        if k not in primary:
+            lines.append(f"{k}: {format_yaml_value(v)}")
     lines.append("---")
     return "\n".join(lines)
 
@@ -115,6 +151,8 @@ def export_media(conn: sqlite3.Connection, dry_run: bool = False) -> dict:
     for mtype, title, source, data_json in rows:
         if mtype not in MEDIA_TARGETS:
             continue  # unknown media_type: skip rather than crash on new sources
+        if mtype in ALLOWED_SOURCES and source not in ALLOWED_SOURCES[mtype]:
+            continue  # skip inactive/legacy sources (e.g. goodreads when hardcover is the single source)
 
         try:
             data = json.loads(data_json or "{}")
