@@ -7,7 +7,8 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional, Generator
-from .config import DB_PATH, MEDIA_DIR, C_GREEN, C_RESET
+from . import config
+from .config import C_GREEN, C_RESET
 
 
 def get_db(db_path: Optional[Path] = None) -> sqlite3.Connection:
@@ -17,7 +18,7 @@ def get_db(db_path: Optional[Path] = None) -> sqlite3.Connection:
       - Foreign key enforcement
       - 5000ms busy timeout to prevent 'database is locked' errors under load
     """
-    target = db_path or DB_PATH
+    target = db_path or config.DB_PATH
     conn = sqlite3.connect(str(target), timeout=10.0)
     conn.execute("PRAGMA journal_mode = WAL;")
     conn.execute("PRAGMA busy_timeout = 5000;")
@@ -42,8 +43,8 @@ def db_session(db_path: Optional[Path] = None) -> Generator[sqlite3.Cursor, None
 
 def init_db(db_path: Optional[Path] = None, verbose: bool = False) -> None:
     """Initializes tables, creates indexes, and performs idempotent migrations."""
-    target = db_path or DB_PATH
-    MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    target = db_path or config.DB_PATH
+    config.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
     conn = get_db(target)
     cursor = conn.cursor()
@@ -159,6 +160,37 @@ def init_db(db_path: Optional[Path] = None, verbose: bool = False) -> None:
     """)
 
     cursor.execute("""
+    CREATE TABLE IF NOT EXISTS payment_accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        slug TEXT UNIQUE,
+        name TEXT NOT NULL,
+        category TEXT,
+        number TEXT,
+        recipient TEXT,
+        details TEXT,
+        details_id TEXT,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS referrals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        slug TEXT UNIQUE,
+        name TEXT NOT NULL,
+        category TEXT,
+        code TEXT,
+        link TEXT,
+        benefit TEXT,
+        status TEXT DEFAULT 'ACTIVE',
+        is_public INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+    """)
+
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS event_contacts (
         event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
         contact_id INTEGER REFERENCES contacts(id) ON DELETE CASCADE,
@@ -251,6 +283,9 @@ def init_db(db_path: Optional[Path] = None, verbose: bool = False) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_logs_item ON media_logs(media_item_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_logs_date ON media_logs(date_logged);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_links_category ON links(category);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_accounts_category ON payment_accounts(category);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_referrals_category ON referrals(category);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_referrals_status ON referrals(status);")
 
     conn.commit()
     conn.close()

@@ -29,7 +29,14 @@ ENV/
 htmlcov/
 
 # Local databases, media and secrets
-ierp/events.db
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite3
+events.db*
+ierp/events.db*
 ierp/events_media/
 ierp/geocode_cache.json
 ierp/google_credentials.json

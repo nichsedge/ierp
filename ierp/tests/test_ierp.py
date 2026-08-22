@@ -146,6 +146,132 @@ class TestIERP(unittest.TestCase):
         linked = cursor.execute("SELECT contact_id FROM event_contacts WHERE event_id = ?", (e_id,)).fetchone()
         self.assertEqual(linked[0], c_id)
 
+    def test_dashboard_helpers_and_sorting(self):
+        """Verifies pagination and whitelist-safe sorting helpers."""
+        from ierp.core.dashboard import parse_pagination, parse_sort, EVENT_SORT_COLS, VENDOR_SORT_COLS
+
+        # Test pagination defaults and boundaries
+        self.assertEqual(parse_pagination({}), (25, 0))
+        self.assertEqual(parse_pagination({"limit": ["10"], "offset": ["20"]}), (10, 20))
+        self.assertEqual(parse_pagination({"limit": ["-5"], "offset": ["-10"]}), (1, 0))
+        self.assertEqual(parse_pagination({"limit": ["9999"]}), (500, 0))
+
+        # Test sort whitelist validation against SQL injection
+        col, direction = parse_sort({"sort": ["title"], "dir": ["asc"]}, EVENT_SORT_COLS, "start_date")
+        self.assertEqual(col, "e.title")
+        self.assertEqual(direction, "ASC")
+
+        # Attempt SQL injection in sort and dir
+        malicious_col, malicious_dir = parse_sort(
+            {"sort": ["title; DROP TABLE events;--"], "dir": ["desc; SELECT * FROM contacts;"]},
+            EVENT_SORT_COLS,
+            "start_date"
+        )
+        self.assertEqual(malicious_col, "e.start_date")
+        self.assertEqual(malicious_dir, "DESC")
+
+    def test_dashboard_endpoints(self):
+        """Verifies dashboard HTTP server API endpoints with filtering, sorting, and pagination."""
+        import http.server
+        import threading
+        import urllib.request
+        from ierp.core.dashboard import DashboardRequestHandler
+        import ierp.core.config as config
+
+        # Seed test data
+        cursor = self.conn.cursor()
+        cursor.execute("INSERT INTO events (title, place, start_date, tags, notes) VALUES ('Tech Summit', 'Jakarta', '2026-08-10', '[\"tech\", \"conference\"]', 'Keynote talk')")
+        cursor.execute("INSERT INTO events (title, place, start_date, tags, notes) VALUES ('Bali Meetup', 'Bali', '2026-08-20', '[\"community\"]', 'Casual meetup')")
+        cursor.execute("INSERT INTO vendors (name, category, location, favorite) VALUES ('Bali Moto', 'Rental', 'Bali', 1)")
+        cursor.execute("INSERT INTO vendors (name, category, location, favorite) VALUES ('Java Moto', 'Rental', 'Jakarta', 0)")
+        cursor.execute("INSERT INTO links (label, url, category, is_public) VALUES ('Portfolio', 'https://example.com', 'profile', 1)")
+        cursor.execute("INSERT INTO payment_accounts (slug, name, category, number, recipient) VALUES ('bca', 'BCA', 'Bank', '12345678', 'Ichsan')")
+        cursor.execute("INSERT INTO referrals (slug, name, category, code, link, status) VALUES ('ref1', 'Cloud', 'Hosting', 'SAVE50', 'https://ref.com', 'ACTIVE')")
+        cursor.execute("INSERT INTO media_items (media_type, title, source, data_json) VALUES ('book', 'Sample Book', 'hardcover', '{\"author\": \"Author A\", \"rating\": 4.5}')")
+        self.conn.commit()
+
+        # Temporarily point DB_PATH to test DB
+        old_db_path = config.DB_PATH
+        config.DB_PATH = self.db_path
+        server = None
+        server_thread = None
+        try:
+            server = http.server.HTTPServer(("127.0.0.1", 0), DashboardRequestHandler)
+            port = server.server_port
+            server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+            server_thread.start()
+
+            base_url = f"http://127.0.0.1:{port}"
+
+            # 1. Test GET /
+            with urllib.request.urlopen(f"{base_url}/") as res:
+                self.assertEqual(res.status, 200)
+                html = res.read().decode("utf-8")
+                self.assertIn("Journal & CRM Dashboard", html)
+                self.assertIn("Media Logs", html)
+                self.assertIn("Vendors", html)
+                self.assertIn("Commerce", html)
+
+            # 2. Test GET /api/stats
+            with urllib.request.urlopen(f"{base_url}/api/stats") as res:
+                self.assertEqual(res.status, 200)
+                data = json.loads(res.read().decode("utf-8"))
+                self.assertGreaterEqual(data["total_events"], 2)
+
+            # 3. Test GET /api/events with filtering and sorting
+            with urllib.request.urlopen(f"{base_url}/api/events?q=Tech&from=2026-08-01&to=2026-08-15&sort=start_date&dir=asc&limit=5&offset=0") as res:
+                self.assertEqual(res.status, 200)
+                data = json.loads(res.read().decode("utf-8"))
+                self.assertEqual(data["total"], 1)
+                self.assertEqual(data["items"][0]["title"], "Tech Summit")
+
+            # 4. Test GET /api/vendors and POST /api/vendors/favorite
+            with urllib.request.urlopen(f"{base_url}/api/vendors?category=Rental&sort=name&dir=asc&limit=5&offset=0") as res:
+                self.assertEqual(res.status, 200)
+                data = json.loads(res.read().decode("utf-8"))
+                self.assertEqual(data["total"], 2)
+                vendor_id = data["items"][0]["id"]
+
+            req = urllib.request.Request(
+                f"{base_url}/api/vendors/favorite",
+                data=json.dumps({"id": vendor_id}).encode("utf-8"),
+                headers={"Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(req) as res:
+                self.assertEqual(res.status, 200)
+                fav_res = json.loads(res.read().decode("utf-8"))
+                self.assertEqual(fav_res["status"], "success")
+
+            # 5. Test GET /api/media
+            with urllib.request.urlopen(f"{base_url}/api/media?type=book&limit=5&offset=0") as res:
+                self.assertEqual(res.status, 200)
+                data = json.loads(res.read().decode("utf-8"))
+                self.assertEqual(data["total"], 1)
+                self.assertEqual(data["items"][0]["title"], "Sample Book")
+
+            # 6. Test GET /api/links
+            with urllib.request.urlopen(f"{base_url}/api/links?category=profile&limit=5&offset=0") as res:
+                self.assertEqual(res.status, 200)
+                data = json.loads(res.read().decode("utf-8"))
+                self.assertEqual(data["total"], 1)
+
+            # 7. Test GET /api/payment-accounts and /api/referrals
+            with urllib.request.urlopen(f"{base_url}/api/payment-accounts?limit=5&offset=0") as res:
+                self.assertEqual(res.status, 200)
+                data = json.loads(res.read().decode("utf-8"))
+                self.assertEqual(data["total"], 1)
+
+            with urllib.request.urlopen(f"{base_url}/api/referrals?status=active&limit=5&offset=0") as res:
+                self.assertEqual(res.status, 200)
+                data = json.loads(res.read().decode("utf-8"))
+                self.assertEqual(data["total"], 1)
+
+        finally:
+            config.DB_PATH = old_db_path
+            if server:
+                server.shutdown()
+                server.server_close()
+
 
 def run_tests():
     suite = unittest.TestLoader().loadTestsFromTestCase(TestIERP)
