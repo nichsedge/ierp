@@ -52,13 +52,11 @@ def sanitize_filename(text: str) -> str:
 
 
 def yaml_str(v) -> str:
-    """Formats a scalar as Obsidian-safe YAML."""
+    """Formats a scalar as Obsidian-safe YAML (always quoted)."""
     if v is None:
         return "null"
     s = str(v).replace("\\", "\\\\").replace('"', '\\"')
-    if any(c in s for c in ":#[],{}'") or s.lower() in ("true", "false", "null", "yes", "no"):
-        return f'"{s}"'
-    return s
+    return f'"{s}"'
 
 
 def render_frontmatter(fm: dict) -> str:
@@ -89,7 +87,7 @@ def build_media_note(mtype: str, title: str, source: str, data: dict) -> tuple:
     date = (data.get("date_logged") or data.get("finished_at")
             or data.get("started_at") or "2016-01-01")
 
-    fm = {"title": title, "date": date, "tags": tags, "publish_external": False}
+    fm = {"title": title, "date": date, "tags": tags, "publish_external": True}
     for key in ("author", "year", "original_title", "status", "rating",
                 "progress", "started_at", "finished_at", "source"):
         val = data.get(key) or (source if key == "source" else None)
@@ -178,7 +176,7 @@ def export_links(conn: sqlite3.Connection, dry_run: bool = False) -> int:
         "title": "Links",
         "date": datetime.now().strftime("%Y-%m-%d"),
         "tags": ["note"],
-        "publish_external": True,
+        "publish_external": False,  # personal links (WhatsApp, socials) — never public
     }
     write_note(LINKS_NOTE, fm, "\n".join(body_lines), dry_run)
     return len(rows)
