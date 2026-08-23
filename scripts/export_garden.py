@@ -124,6 +124,10 @@ def build_media_note(mtype: str, title: str, source: str, data: dict) -> tuple:
             or data.get("started_at") or "2016-01-01")
 
     fm = {"title": title, "date": date, "tags": tags, "publish_external": True}
+    # Opt-out privacy flag: set "is_public": false in the item's data_json
+    # (ierp CLI) to keep this note out of the public garden.
+    if data.get("is_public") is False:
+        fm["publish_external"] = False
     for key in ("author", "year", "original_title", "status", "rating",
                 "progress", "started_at", "finished_at", "source"):
         val = data.get(key) or (source if key == "source" else None)
