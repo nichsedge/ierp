@@ -44,3 +44,4 @@ ierp/google_token.json
 *.env
 *.key
 *.pem
+.envrc
