@@ -3,15 +3,17 @@ Central configuration, paths, and constants for iERP.
 Strictly zero external dependencies (Python standard library only).
 """
 
+import os
 from pathlib import Path
 
 # Base Paths
 BASE_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = BASE_DIR / "events.db"
-MEDIA_DIR = BASE_DIR / "events_media"
-GOOGLE_CREDS_PATH = BASE_DIR / "google_credentials.json"
-GOOGLE_TOKEN_PATH = BASE_DIR / "google_token.json"
-GEO_CACHE_PATH = BASE_DIR / "geocode_cache.json"
+TEMPLATES_DIR = BASE_DIR / "core" / "templates"
+DB_PATH = Path(os.environ.get("IERP_DB", BASE_DIR / "events.db")).resolve()
+MEDIA_DIR = Path(os.environ.get("IERP_MEDIA_DIR", BASE_DIR / "events_media")).resolve()
+GOOGLE_CREDS_PATH = Path(os.environ.get("IERP_GOOGLE_CREDS", BASE_DIR / "google_credentials.json")).resolve()
+GOOGLE_TOKEN_PATH = Path(os.environ.get("IERP_GOOGLE_TOKEN", BASE_DIR / "google_token.json")).resolve()
+GEO_CACHE_PATH = Path(os.environ.get("IERP_GEO_CACHE", BASE_DIR / "geocode_cache.json")).resolve()
 
 # Media tracker profiles (used by `ierp sync`).
 # Values are read from environment variables, loaded from ~/.secrets or ierp/.env

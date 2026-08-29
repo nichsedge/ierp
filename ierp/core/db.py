@@ -3,15 +3,16 @@ Database engine and connection management for iERP.
 Enforces SQLite Write-Ahead Logging (WAL) and creates performance indexes.
 """
 
-import sqlite3
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional, Generator
+import sqlite3
+
 from . import config
 from .config import C_GREEN, C_RESET
 
 
-def get_db(db_path: Optional[Path] = None) -> sqlite3.Connection:
+def get_db(db_path: Path | None = None) -> sqlite3.Connection:
     """
     Returns an optimized SQLite database connection with:
       - Write-Ahead Logging (WAL mode) for non-blocking concurrent reads and writes
@@ -27,7 +28,7 @@ def get_db(db_path: Optional[Path] = None) -> sqlite3.Connection:
 
 
 @contextmanager
-def db_session(db_path: Optional[Path] = None) -> Generator[sqlite3.Cursor, None, None]:
+def db_session(db_path: Path | None = None) -> Generator[sqlite3.Cursor, None, None]:
     """Context manager for transactional database operations."""
     conn = get_db(db_path)
     cursor = conn.cursor()
@@ -41,7 +42,7 @@ def db_session(db_path: Optional[Path] = None) -> Generator[sqlite3.Cursor, None
         conn.close()
 
 
-def init_db(db_path: Optional[Path] = None, verbose: bool = False) -> None:
+def init_db(db_path: Path | None = None, verbose: bool = False) -> None:
     """Initializes tables, creates indexes, and performs idempotent migrations."""
     target = db_path or config.DB_PATH
     config.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
@@ -286,6 +287,23 @@ def init_db(db_path: Optional[Path] = None, verbose: bool = False) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_accounts_category ON payment_accounts(category);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_referrals_category ON referrals(category);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_referrals_status ON referrals(status);")
+
+    # Receipts / Receivables
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS receipts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
+        amount REAL NOT NULL,
+        type TEXT NOT NULL,
+        status TEXT DEFAULT 'paid',
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_receipts_event ON receipts(event_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_receipts_type ON receipts(type);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_receipts_status ON receipts(status);")
 
     conn.commit()
     conn.close()

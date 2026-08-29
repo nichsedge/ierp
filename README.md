@@ -15,7 +15,8 @@ A zero-dependency, offline-first personal CRM, journal event log system, and tim
   * **Google Maps Timeline**: Import raw location history JSON with reverse geocoding cache.
   * **Live GPS Webhooks**: Ingest live location updates from mobile GPS logger apps directly into SQLite.
 * **Smart Contact Merge & Linking Engine**: Automatically associates event journal entries with contacts while preserving tags, aliases, and notes.
-* **Web Dashboard**: Built-in responsive dashboard with interactive event filtering, contact inspection, and vendor management.
+* **Receipts & Receivables Financial Engine**: Track income, costs, and expected payments against journal projects with real-time balance calculations.
+* **Web Dashboard**: Built-in responsive dashboard with interactive event filtering, contact inspection, vendor management, and financial receipts ledger.
 
 ---
 
@@ -42,6 +43,12 @@ uv run ierp merge-contacts --auto
 
 # Log a structured event
 uv run ierp insert --title "Strategy Sync" --place "Jakarta" --start-date "2026-08-19" --tags "work,meeting"
+
+# Record financial receipt against event
+uv run ierp insert-receipt --event-id 1 --amount 1500000 --type income --status paid --notes "DP Payment"
+
+# View financial position
+uv run ierp balance
 
 # List recent events & contacts
 uv run ierp list
@@ -73,6 +80,10 @@ uv run ierp dashboard
 | `uv run ierp vendors [--category <CAT>] [--favorite]` | List vendors and preferred service providers. |
 | `uv run ierp show-vendor <ID>` | Show full vendor/seller details. |
 | `uv run ierp insert-vendor --name "<Name>" ...` | Insert a vendor/seller record directly. |
+| `uv run ierp insert-receipt --event-id <ID> --amount <VAL> --type <TYPE>` | Record or update monetary receipt/receivable against an event. |
+| `uv run ierp receipts [--event-id <ID>] [--type <TYPE>] [--status <STATUS>]` | List financial receipts with optional filters. |
+| `uv run ierp show-receipt <ID>` | Show full receipt details with linked event info. |
+| `uv run ierp balance [--event-id <ID>]` | Show net cash, net position, and outstanding balance summary. |
 | `uv run ierp link` | Run relationship discovery between events and contacts. |
 | `uv run ierp dashboard [--port 8000]` | Start web dashboard server with live GPS webhook receiver. |
 | `uv run ierp test` | Run automated test suite. |
@@ -81,11 +92,11 @@ uv run ierp dashboard
 
 ## 🧪 Testing
 
-Run the automated test suite with standard library `unittest`:
+Run the automated test suite:
 ```bash
 uv run ierp test
 # or
-uv run python -m unittest discover -s ierp/tests
+uv run pytest
 ```
 
 ---

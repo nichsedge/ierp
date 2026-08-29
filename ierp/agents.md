@@ -9,16 +9,21 @@ This directory contains a localized database and CLI system for managing persona
 The system is modularized under `ierp/core/` with single-command execution through `ierp.cli`:
 
 - **CLI Entrypoint**: `ierp.cli` (invoked via `uv run ierp <command>`)
-- **Core Modules**:
-  - `ierp/core/config.py`: Central paths (`events.db`, `events_media`), constants, ANSI colors.
+- **Core Modules & Services**:
+  - `ierp/core/config.py`: Central paths (`events.db`, `events_media`, `templates`), environment overrides (`IERP_DB`, `IERP_MEDIA_DIR`), constants, ANSI colors.
   - `ierp/core/db.py`: SQLite `WAL` mode connection manager, schema migrations, and performance indexes.
+  - `ierp/core/events.py`: Events domain service (CRUD, filtering, search, and contact linking).
+  - `ierp/core/contacts.py`: Contacts domain service (CRUD, lookup, search, and resolution).
+  - `ierp/core/vendors.py`: Vendors & Preferred Sellers domain service (CRUD, category filtering, and favorite toggling).
   - `ierp/core/merging.py`: Contact deduplication, note merging, and relationship preservation engine.
   - `ierp/core/google_sync.py`: Google People API OAuth 2.0 client and incremental delta sync (`syncToken`).
   - `ierp/core/geocoding.py`: OpenStreetMap Nominatim reverse-geocoder with rate-limiting and persistent disk caching.
   - `ierp/core/importers.py`: Parsers for Notion CSV/Markdown exports & Google Maps Semantic Location History JSON.
-  - `ierp/core/dashboard.py`: Single-page interactive web dashboard, JSON REST API, and OwnTracks GPS webhook receiver.
+  - `ierp/core/dashboard.py`: Single-page interactive web dashboard server, JSON REST API, and OwnTracks GPS webhook receiver.
+  - `ierp/core/templates/dashboard.html`: Standalone modern HTML/CSS/JS frontend template loaded by dashboard server.
   - `ierp/core/media.py`: Media consumption engine — `media_items` + `media_logs` tables (books/films/anime/manga/dramas), idempotent upserts keyed on (media_type, source, title); also manages the `links` table (profile/social/reference URLs with `is_public` flag).
   - `ierp/core/commerce.py`: `payment_accounts` + `referrals` tables (portfolio commerce data; source of truth for nichsedge.github.io `data/pay.json` & `data/referrals.json`).
+  - `ierp/core/receipts.py`: Receipts & Receivables engine — `receipts` table (income, cost, expected payments) against events with balance computation.
   - `ierp/core/sources.py`: Normalization of raw tracker rows onto the ierp media schema. `SOURCE_MAP` + `FIELD_CANDIDATES`/`DATE_CANDIDATES` tables are the single place to touch when a source renames columns.
   - `ierp/core/fetchers.py`: Stdlib-only fetchers for external trackers (Hardcover/AniList GraphQL, Goodreads RSS, Letterboxd & MyDramaList scraping). No pandas/requests/bs4.
   - `ierp/core/ingest.py`: Ingestion bridge — `ingest_rows()` library entry + `serve-ingest` local HTTP endpoint (`POST /ingest/<source_key>` with raw rows JSON).
@@ -33,7 +38,7 @@ The system is modularized under `ierp/core/` with single-command execution throu
 ## 🗄️ Database Schema & Concurrency
 
 - SQLite operates in **Write-Ahead Logging (`WAL`)** mode with `busy_timeout = 5000ms` and `foreign_keys = ON`.
-- Includes performance indexes on `events(start_date)`, `events(place)`, `contacts(name)`, `contacts(email)`, `contacts(google_id)`, `contacts(source)`, `event_contacts(event_id, contact_id)`, `vendors(name)`, `vendors(category)`, and `vendors(favorite)`.
+- Includes performance indexes on `events(start_date)`, `events(place)`, `contacts(name)`, `contacts(email)`, `contacts(google_id)`, `contacts(source)`, `event_contacts(event_id, contact_id)`, `vendors(name)`, `vendors(category)`, `vendors(favorite)`, `receipts(event_id)`, `receipts(type)`, and `receipts(status)`.
 
 ---
 
@@ -163,5 +168,9 @@ Run commands using **`uv run ierp <command>`**:
 - **List Vendors / Sellers**: `uv run ierp vendors [--category <cat>] [--favorite]`
 - **Show Vendor Details**: `uv run ierp show-vendor <vendor_id>`
 - **Insert Vendor / Seller**: `uv run ierp insert-vendor --name "<name>" [--category "<cat>"] [--location "<loc>"] [--phone "<phone>"] [--favorite]`
+- **Insert / Update Receipt**: `uv run ierp insert-receipt [--id <id>] --event-id <id> --amount <amount> --type <income|cost|expected> [--status <paid|partial|unpaid>] [--notes "<notes>"]`
+- **List Receipts**: `uv run ierp receipts [--event-id <id>] [--type <type>] [--status <status>] [--limit <n>]`
+- **Show Receipt Details**: `uv run ierp show-receipt <id>`
+- **View Financial Balance**: `uv run ierp balance [--event-id <id>]`
 - **Search Events**: `uv run ierp search "<keyword>"`
 - **Link Database**: `uv run ierp link`

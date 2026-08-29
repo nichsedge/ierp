@@ -28,21 +28,21 @@ SOURCE_PREFERENCE = {
 
 # Candidate column names per record field (first non-empty match wins).
 FIELD_CANDIDATES = {
-    "title": ("Title", "Name", "series_title", "manga_title"),
+    "title": ("Title", "Name", "series_title", "manga_title", "title"),
     "original_title": ("series_native_title", "native_title", "Original Title"),
     "year": ("Year", "year", "release_year", "series_season_year",
              "Year Published", "year_published"),
     "author": ("Author", "author"),
-    "status": ("Reading Status", "status", "Progress"),
-    "rating": ("My Rating", "Rating", "rating", "Score", "score"),
-    "progress": ("Progress", "progress"),
+    "status": ("Reading Status", "status", "Progress", "my_status"),
+    "rating": ("My Rating", "Rating", "rating", "Score", "score", "my_score"),
+    "progress": ("Progress", "progress", "my_watched_episodes"),
     "review": ("My Review", "my_comments", "notes"),
 }
 
 # Candidate column names per date field.
 DATE_CANDIDATES = {
-    "started_at": ("Date Started", "started_at", "Start Date"),
-    "finished_at": ("Date Read", "finished_at", "Finish Date"),
+    "started_at": ("Date Started", "started_at", "Start Date", "my_start_date"),
+    "finished_at": ("Date Read", "finished_at", "Finish Date", "my_finish_date"),
     "date_logged": ("Date Added", "Date", "date", "updated_at", "created_at"),
 }
 
