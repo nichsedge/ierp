@@ -305,10 +305,40 @@ def init_db(db_path: Path | None = None, verbose: bool = False) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_receipts_type ON receipts(type);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_receipts_status ON receipts(status);")
 
+    # Gadgets / Hardware Assets
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS gadgets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        slug TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        brand TEXT,
+        model TEXT,
+        category TEXT,
+        status TEXT DEFAULT 'active',
+        purchase_date TEXT,
+        purchase_price REAL,
+        currency TEXT DEFAULT 'IDR',
+        specs_json TEXT,
+        serial_number TEXT,
+        vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL,
+        event_id INTEGER REFERENCES events(id) ON DELETE SET NULL,
+        receipt_id INTEGER REFERENCES receipts(id) ON DELETE SET NULL,
+        notes TEXT,
+        is_public INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_gadgets_name ON gadgets(name);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_gadgets_brand ON gadgets(brand);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_gadgets_status ON gadgets(status);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_gadgets_category ON gadgets(category);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_gadgets_slug ON gadgets(slug);")
+
     conn.commit()
     conn.close()
 
     if verbose:
         print(f"{C_GREEN}Database and media folder initialized successfully.{C_RESET}")
         print(f"  DB Path: {target}")
-        print(f"  Media folder: {MEDIA_DIR}")
+        print(f"  Media folder: {config.MEDIA_DIR}")

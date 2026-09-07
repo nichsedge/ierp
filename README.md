@@ -80,10 +80,18 @@ uv run ierp dashboard
 | `uv run ierp vendors [--category <CAT>] [--favorite]` | List vendors and preferred service providers. |
 | `uv run ierp show-vendor <ID>` | Show full vendor/seller details. |
 | `uv run ierp insert-vendor --name "<Name>" ...` | Insert a vendor/seller record directly. |
+| `uv run ierp gadgets [--category <CAT>] [--status <STAT>]` | List hardware assets/gadgets with filtering. |
+| `uv run ierp show-gadget <ID\|slug>` | Show full gadget details, specs, and linked vendor/receipt. |
+| `uv run ierp insert-gadget --name "<Name>" ...` | Insert a structured gadget/hardware asset record. |
+| `uv run ierp import-gadgets [<dir>]` | Import gadget markdown notes from digital garden into SQLite. |
+| `uv run ierp export-gadgets [--garden-dir <DIR>]` | Export gadgets from SQLite into digital garden markdown notes. |
 | `uv run ierp insert-receipt --event-id <ID> --amount <VAL> --type <TYPE>` | Record or update monetary receipt/receivable against an event. |
 | `uv run ierp receipts [--event-id <ID>] [--type <TYPE>] [--status <STATUS>]` | List financial receipts with optional filters. |
 | `uv run ierp show-receipt <ID>` | Show full receipt details with linked event info. |
 | `uv run ierp balance [--event-id <ID>]` | Show net cash, net position, and outstanding balance summary. |
+| `uv run ierp insert-pay --name "<Name>" --number "<Num>" ...` | Insert or update a payment account / bank node. |
+| `uv run ierp pay [--category <CAT>]` | List payment accounts and banking nodes. |
+| `uv run ierp referrals [--category <CAT>] [--public-only]` | List referral codes. |
 | `uv run ierp link` | Run relationship discovery between events and contacts. |
 | `uv run ierp dashboard [--port 8000]` | Start web dashboard server with live GPS webhook receiver. |
 | `uv run ierp test` | Run automated test suite. |

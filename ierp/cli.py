@@ -21,6 +21,7 @@ if str(BASE_DIR) not in sys.path:
 
 from ierp.core.commerce import (
     init_tables as init_commerce_tables,
+    insert_payment_account,
     list_payment_accounts,
     list_referrals,
     upsert_payment_account,
@@ -41,6 +42,15 @@ from ierp.core.contacts import get_contact, list_contacts
 from ierp.core.dashboard import start_dashboard_server
 from ierp.core.db import get_db, init_db
 from ierp.core.events import get_event, insert_event, list_events as query_events, search_events as query_search_events
+from ierp.core.gadgets import (
+    delete_gadget,
+    export_garden_gadgets,
+    get_gadget,
+    import_garden_gadgets,
+    insert_gadget,
+    list_gadgets,
+    update_gadget,
+)
 from ierp.core.google_sync import sync_google_contacts
 from ierp.core.importers import import_crm_contacts, import_notion_export, import_timeline
 from ierp.core.ingest import ingest_rows, serve_ingest
@@ -326,6 +336,103 @@ def handle_insert_vendor(args: argparse.Namespace) -> None:
 
 
 # -----------------------------------------------------------------------------
+# Handlers: Gadgets & Hardware Assets
+# -----------------------------------------------------------------------------
+
+def handle_insert_gadget(args: argparse.Namespace) -> None:
+    try:
+        gid = insert_gadget(
+            name=args.name,
+            slug=args.slug,
+            brand=args.brand,
+            model=args.model,
+            category=args.category,
+            status=args.status,
+            purchase_date=args.date,
+            purchase_price=args.price,
+            currency=args.currency,
+            specs=args.specs,
+            serial_number=args.serial,
+            vendor_id=args.vendor_id,
+            event_id=args.event_id,
+            receipt_id=args.receipt_id,
+            notes=args.notes,
+            is_public=not args.private,
+        )
+        print(f"{C_GREEN}Successfully inserted gadget #{gid}: {args.name}{C_RESET}")
+    except Exception as e:
+        print(f"{C_RED}Failed to insert gadget: {e}{C_RESET}")
+
+
+def handle_list_gadgets(args: argparse.Namespace) -> None:
+    rows, total = list_gadgets(
+        category=args.category,
+        status=args.status,
+        brand=args.brand,
+        q=args.q,
+        limit=args.limit,
+    )
+    if not rows:
+        print("No gadgets found.")
+        return
+
+    print(f"\n{C_BOLD}{'ID':<4} | {'Name':<26} | {'Brand':<10} | {'Category':<14} | {'Status':<8} | {'Acquired':<10} | Price{C_RESET}")
+    print("-" * 92)
+    for g in rows:
+        price_str = f"{g['currency'] or 'IDR'} {g['purchase_price']:,.0f}" if g.get("purchase_price") else "-"
+        date_str = (g.get("purchase_date") or "-")[:10]
+        status_str = g.get("status") or "active"
+        print(f"{g['id']:<4} | {g['name'][:26]:<26} | {(g['brand'] or '-'):<10} | {(g['category'] or '-'):<14} | {status_str:<8} | {date_str:<10} | {price_str}")
+    print(f"\nTotal gadgets: {total}\n")
+
+
+def handle_show_gadget(args: argparse.Namespace) -> None:
+    g = get_gadget(args.id)
+    if not g:
+        print(f"{C_RED}Gadget '{args.id}' not found.{C_RESET}")
+        return
+
+    print(f"\n{C_BOLD}{C_GREEN}=== Gadget #{g['id']}: {g['name']} ==={C_RESET}")
+    print(f"{C_BOLD}Slug:{C_RESET}          {g['slug']}")
+    print(f"{C_BOLD}Brand:{C_RESET}         {g['brand'] or '-'}")
+    print(f"{C_BOLD}Model:{C_RESET}         {g['model'] or '-'}")
+    print(f"{C_BOLD}Category:{C_RESET}      {g['category'] or '-'}")
+    print(f"{C_BOLD}Status:{C_RESET}        {g['status'] or 'active'}")
+    print(f"{C_BOLD}Acquired:{C_RESET}      {g['purchase_date'] or '-'}")
+    if g.get("purchase_price"):
+        print(f"{C_BOLD}Price:{C_RESET}         {g['currency'] or 'IDR'} {g['purchase_price']:,.0f}")
+    if g.get("specs_json"):
+        print(f"{C_BOLD}Specs:{C_RESET}         {g['specs_json']}")
+    if g.get("serial_number"):
+        print(f"{C_BOLD}Serial No:{C_RESET}     {g['serial_number']}")
+    if g.get("vendor_name"):
+        print(f"{C_BOLD}Vendor:{C_RESET}        {g['vendor_name']} (#{g['vendor_id']})")
+    if g.get("event_title"):
+        print(f"{C_BOLD}Linked Event:{C_RESET}  {g['event_title']} (#{g['event_id']})")
+    if g.get("receipt_amount"):
+        print(f"{C_BOLD}Receipt Amount:{C_RESET}Rp{g['receipt_amount']:,.0f} (#{g['receipt_id']})")
+    if g.get("notes"):
+        print(f"\n{C_BOLD}--- Notes ---{C_RESET}")
+        print(g["notes"])
+    print(f"\n{C_BOLD}Public Garden:{C_RESET} {'Yes' if g.get('is_public', 1) else 'No'}")
+    print(f"{C_BOLD}Created:{C_RESET}       {g['created_at']}")
+    print(f"{C_BOLD}{C_GREEN}{'=' * 35}{C_RESET}\n")
+
+
+def handle_import_gadgets(args: argparse.Namespace) -> None:
+    garden_dir = Path(args.dir) if args.dir else None
+    imported, skipped = import_garden_gadgets(garden_dir=garden_dir)
+    print(f"{C_GREEN}Gadget import complete: {imported} imported, {skipped} updated/skipped.{C_RESET}")
+
+
+def handle_export_gadgets(args: argparse.Namespace) -> None:
+    garden_dir = Path(args.garden_dir) if args.garden_dir else None
+    res = export_garden_gadgets(garden_dir=garden_dir, dry_run=args.dry_run)
+    mode = " [dry-run]" if res["dry_run"] else ""
+    print(f"{C_GREEN}Gadgets exported{mode} to {res['target_dir']}: {res['notes_written']} notes written, index updated.{C_RESET}")
+
+
+# -----------------------------------------------------------------------------
 # Handlers: Receipts & Balances
 # -----------------------------------------------------------------------------
 
@@ -538,6 +645,21 @@ def handle_import_referrals(args: argparse.Namespace) -> None:
     print(f"{C_GREEN}Imported {len(items)} referrals.{C_RESET}")
 
 
+def handle_insert_pay(args: argparse.Namespace) -> None:
+    init_db()
+    slug = args.slug or args.name.lower().replace(" ", "-")
+    pid = insert_payment_account(
+        slug=slug,
+        name=args.name,
+        category=args.category,
+        number=args.number,
+        recipient=args.recipient,
+        details=args.details,
+        details_id=args.details_id,
+    )
+    print(f"{C_GREEN}Payment account #{pid} saved: {args.name} ({args.number}){C_RESET}")
+
+
 def handle_pay(args: argparse.Namespace) -> None:
     rows = list_payment_accounts(category=args.category)
     if not rows:
@@ -678,6 +800,47 @@ def build_parser() -> argparse.ArgumentParser:
     p_insert_vendor.add_argument("--favorite", action="store_true", help="Mark as favorite vendor")
     p_insert_vendor.set_defaults(func=handle_insert_vendor)
 
+    # gadgets
+    p_insert_gadget = subparsers.add_parser("insert-gadget", help="Insert a structured gadget/hardware asset")
+    p_insert_gadget.add_argument("--name", required=True, help="Gadget/device name")
+    p_insert_gadget.add_argument("--slug", help="Custom unique slug")
+    p_insert_gadget.add_argument("--brand", help="Manufacturer brand (e.g. Xiaomi, Apple, Samsung)")
+    p_insert_gadget.add_argument("--model", help="Specific model designation")
+    p_insert_gadget.add_argument("--category", help="Device category (e.g. Smartphone, Wearable, Laptop)")
+    p_insert_gadget.add_argument("--status", choices=["active", "backup", "retired", "sold", "broken"], default="active", help="Lifecycle status")
+    p_insert_gadget.add_argument("--date", help="Purchase or acquisition date (YYYY-MM-DD)")
+    p_insert_gadget.add_argument("--price", type=float, help="Acquisition price")
+    p_insert_gadget.add_argument("--currency", default="IDR", help="Currency code (default: IDR)")
+    p_insert_gadget.add_argument("--specs", help="Specs description or JSON")
+    p_insert_gadget.add_argument("--serial", help="Serial number or IMEI")
+    p_insert_gadget.add_argument("--vendor-id", type=int, help="Linked vendor ID")
+    p_insert_gadget.add_argument("--event-id", type=int, help="Linked event ID")
+    p_insert_gadget.add_argument("--receipt-id", type=int, help="Linked receipt ID")
+    p_insert_gadget.add_argument("--notes", help="Notes or qualitative description")
+    p_insert_gadget.add_argument("--private", action="store_true", help="Exclude from public digital garden export")
+    p_insert_gadget.set_defaults(func=handle_insert_gadget)
+
+    p_gadgets = subparsers.add_parser("gadgets", help="List gadgets with optional filters")
+    p_gadgets.add_argument("--category", help="Filter by category")
+    p_gadgets.add_argument("--status", help="Filter by status")
+    p_gadgets.add_argument("--brand", help="Filter by brand")
+    p_gadgets.add_argument("--q", help="Keyword search query")
+    p_gadgets.add_argument("--limit", type=int, default=50, help="Max results to display")
+    p_gadgets.set_defaults(func=handle_list_gadgets)
+
+    p_show_gadget = subparsers.add_parser("show-gadget", help="Show full gadget details and specs")
+    p_show_gadget.add_argument("id", help="Gadget ID or slug")
+    p_show_gadget.set_defaults(func=handle_show_gadget)
+
+    p_import_gadgets = subparsers.add_parser("import-gadgets", help="Import gadget markdown notes from digital garden into SQLite")
+    p_import_gadgets.add_argument("dir", nargs="?", help="Path to digital garden Gadget folder")
+    p_import_gadgets.set_defaults(func=handle_import_gadgets)
+
+    p_export_gadgets = subparsers.add_parser("export-gadgets", help="Export gadgets from SQLite to digital garden markdown notes")
+    p_export_gadgets.add_argument("--garden-dir", help="Path to digital garden Gadget folder")
+    p_export_gadgets.add_argument("--dry-run", action="store_true", help="Dry run without writing files")
+    p_export_gadgets.set_defaults(func=handle_export_gadgets)
+
     # receipts
     p_insert_receipt = subparsers.add_parser("insert-receipt", help="Record or update a monetary receipt against an event")
     p_insert_receipt.add_argument("--id", type=int, help="Receipt ID (if updating existing receipt)")
@@ -741,6 +904,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_links.set_defaults(func=handle_links)
 
     # commerce
+    p_insert_pay = subparsers.add_parser("insert-pay", help="Insert/upsert a payment account")
+    p_insert_pay.add_argument("--slug", help="Unique slug/ID (e.g. cimb)")
+    p_insert_pay.add_argument("--name", required=True, help="Account/Bank Name (e.g. Bank CIMB Niaga)")
+    p_insert_pay.add_argument("--category", default="Bank Node", help="Category (e.g. Bank Node, Digital Bank Node, E-Wallet Node)")
+    p_insert_pay.add_argument("--number", required=True, help="Account number")
+    p_insert_pay.add_argument("--recipient", default="MUHAMMAD ICHSANUL AMAL", help="Account recipient name")
+    p_insert_pay.add_argument("--details", help="English transfer details description")
+    p_insert_pay.add_argument("--details-id", help="Indonesian transfer details description")
+    p_insert_pay.set_defaults(func=handle_insert_pay)
+
     p_import_pay = subparsers.add_parser("import-pay", help="Import payment accounts from pay.json")
     p_import_pay.add_argument("file", help="Path to pay.json")
     p_import_pay.set_defaults(func=handle_import_pay)

@@ -88,6 +88,35 @@ def upsert_payment_account(
     return int(cursor.lastrowid or 0)
 
 
+def insert_payment_account(
+    slug: str,
+    name: str,
+    category: Optional[str] = None,
+    number: Optional[str] = None,
+    recipient: Optional[str] = None,
+    details: Optional[str] = None,
+    details_id: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> int:
+    """Inserts or updates a payment account record in SQLite. Returns payment_accounts.id."""
+    with closing(get_db(db_path)) as conn:
+        cur = conn.cursor()
+        init_tables(cur)
+        pid = upsert_payment_account(
+            cur,
+            slug=slug,
+            name=name,
+            category=category,
+            number=number,
+            recipient=recipient,
+            details=details,
+            details_id=details_id,
+        )
+        conn.commit()
+        return pid
+
+
+
 def upsert_referral(
     cursor: sqlite3.Cursor,
     slug: str,

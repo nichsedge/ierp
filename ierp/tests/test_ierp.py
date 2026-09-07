@@ -27,6 +27,15 @@ from ierp.core.vendors import insert_vendor, list_vendors, get_vendor, toggle_ve
 from ierp.core.media import upsert_media_item, ingest_media_records, list_media, upsert_link, list_links
 from ierp.core.sources import normalize_row, normalize_rows, _iso_date, normalize_title
 from ierp.core.commerce import init_tables as init_commerce_tables, upsert_payment_account, upsert_referral, list_payment_accounts, list_referrals
+from ierp.core.gadgets import (
+    delete_gadget,
+    export_garden_gadgets,
+    get_gadget,
+    import_garden_gadgets,
+    insert_gadget,
+    list_gadgets,
+    update_gadget,
+)
 from ierp.cli import build_parser
 
 
@@ -48,7 +57,7 @@ class TestIERP(unittest.TestCase):
 
         # Check tables
         tables = [r[0] for r in cursor.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
-        for expected in ["events", "contacts", "event_media", "event_contacts", "sync_state", "vendors", "media_items", "links", "payment_accounts", "referrals"]:
+        for expected in ["events", "contacts", "event_media", "event_contacts", "sync_state", "vendors", "media_items", "links", "payment_accounts", "referrals", "gadgets"]:
             self.assertIn(expected, tables)
 
         # Check contacts columns
@@ -455,6 +464,80 @@ class TestIERP(unittest.TestCase):
         args_contacts = parser.parse_args(["contacts", "--source", "merged"])
         self.assertEqual(args_contacts.source, "merged")
         self.assertTrue(hasattr(args_contacts, "func"))
+
+        args_gadget = parser.parse_args(["gadgets", "--category", "Smartphone"])
+        self.assertEqual(args_gadget.category, "Smartphone")
+        self.assertTrue(hasattr(args_gadget, "func"))
+
+        args_ins_gadget = parser.parse_args(["insert-gadget", "--name", "Pixel 9", "--price", "15000000"])
+        self.assertEqual(args_ins_gadget.name, "Pixel 9")
+        self.assertEqual(args_ins_gadget.price, 15000000.0)
+        self.assertTrue(hasattr(args_ins_gadget, "func"))
+
+    def test_gadgets_crud_and_sync(self):
+        """Verifies gadget domain service: insert, get, list, update, delete, and garden export/import."""
+        # 1. Insert vendor to link
+        vid = insert_vendor(name="Eraspace", category="Electronics", db_path=self.db_path)
+
+        # 2. Insert gadget
+        gid = insert_gadget(
+            name="Xiaomi 14T Pro",
+            brand="Xiaomi",
+            category="Smartphone",
+            status="active",
+            purchase_date="2026-03-22",
+            purchase_price=11000000.0,
+            specs={"ram": "12GB", "storage": "256GB"},
+            vendor_id=vid,
+            notes="Daily driver phone",
+            db_path=self.db_path,
+        )
+        self.assertGreater(gid, 0)
+
+        # 3. Get gadget
+        g = get_gadget(gid, db_path=self.db_path)
+        self.assertIsNotNone(g)
+        self.assertEqual(g["name"], "Xiaomi 14T Pro")
+        self.assertEqual(g["vendor_name"], "Eraspace")
+        self.assertEqual(g["slug"], "xiaomi-14t-pro")
+
+        # 4. Update gadget
+        updated = update_gadget(gid, status="backup", notes="Now a backup device", db_path=self.db_path)
+        self.assertTrue(updated)
+        g2 = get_gadget("xiaomi-14t-pro", db_path=self.db_path)
+        self.assertEqual(g2["status"], "backup")
+        self.assertEqual(g2["notes"], "Now a backup device")
+
+        # 5. List gadgets
+        rows, total = list_gadgets(category="Smartphone", db_path=self.db_path)
+        self.assertEqual(total, 1)
+        self.assertEqual(rows[0]["name"], "Xiaomi 14T Pro")
+
+        # 6. Test export to garden directory
+        garden_dir = Path(self.temp_dir.name) / "garden_gadgets"
+        res = export_garden_gadgets(garden_dir=garden_dir, db_path=self.db_path)
+        self.assertEqual(res["notes_written"], 1)
+        note_file = garden_dir / "Xiaomi 14T Pro.md"
+        self.assertTrue(note_file.exists())
+        note_text = note_file.read_text(encoding="utf-8")
+        self.assertIn('title: "Xiaomi 14T Pro"', note_text)
+        self.assertIn("Now a backup device", note_text)
+        self.assertIn("12GB", note_text)
+
+        index_file = garden_dir / "index.md"
+        self.assertTrue(index_file.exists())
+        index_text = index_file.read_text(encoding="utf-8")
+        self.assertIn("[[Xiaomi 14T Pro]]", index_text)
+
+        # 7. Test import from garden directory
+        imported, skipped = import_garden_gadgets(garden_dir=garden_dir, db_path=self.db_path)
+        self.assertEqual(imported, 0)
+        self.assertEqual(skipped, 1)  # Existing matched by slug
+
+        # 8. Delete gadget
+        deleted = delete_gadget(gid, db_path=self.db_path)
+        self.assertTrue(deleted)
+        self.assertIsNone(get_gadget(gid, db_path=self.db_path))
 
     def test_dashboard_endpoints(self):
         """Verifies dashboard HTTP server API endpoints with filtering, sorting, and pagination."""

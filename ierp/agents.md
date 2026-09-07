@@ -15,6 +15,7 @@ The system is modularized under `ierp/core/` with single-command execution throu
   - `ierp/core/events.py`: Events domain service (CRUD, filtering, search, and contact linking).
   - `ierp/core/contacts.py`: Contacts domain service (CRUD, lookup, search, and resolution).
   - `ierp/core/vendors.py`: Vendors & Preferred Sellers domain service (CRUD, category filtering, and favorite toggling).
+  - `ierp/core/gadgets.py`: Gadgets & Hardware Assets domain service (CRUD, lifecycle state, specs tracking, digital garden import/export).
   - `ierp/core/merging.py`: Contact deduplication, note merging, and relationship preservation engine.
   - `ierp/core/google_sync.py`: Google People API OAuth 2.0 client and incremental delta sync (`syncToken`).
   - `ierp/core/geocoding.py`: OpenStreetMap Nominatim reverse-geocoder with rate-limiting and persistent disk caching.
@@ -31,14 +32,14 @@ The system is modularized under `ierp/core/` with single-command execution throu
 - **Automated Tests**: [ierp/tests/test_ierp.py](file:///home/al/Projects/ierp/ierp/tests/test_ierp.py)
 - **Database**: `ierp/events.db` (SQLite with `WAL` journaling mode, git-ignored)
 - **Media Attachments**: `ierp/events_media/` (Local folder, git-ignored)
-- **Exporters** (`scripts/`, run from repo root): `export_garden.py` regenerates digital-graveyard media/links notes from the DB; `export_commerce.py` regenerates the portfolio's `pay.json`/`referrals.json`. Both open the DB read-only and honor the `IERP_DB` env override.
+- **Exporters** (`scripts/`, run from repo root): `export_garden.py` regenerates digital garden media/links/gadgets notes from the DB; `export_commerce.py` regenerates the portfolio's `pay.json`/`referrals.json`. Both open the DB read-only and honor the `IERP_DB` env override.
 
 ---
 
 ## 🗄️ Database Schema & Concurrency
 
 - SQLite operates in **Write-Ahead Logging (`WAL`)** mode with `busy_timeout = 5000ms` and `foreign_keys = ON`.
-- Includes performance indexes on `events(start_date)`, `events(place)`, `contacts(name)`, `contacts(email)`, `contacts(google_id)`, `contacts(source)`, `event_contacts(event_id, contact_id)`, `vendors(name)`, `vendors(category)`, `vendors(favorite)`, `receipts(event_id)`, `receipts(type)`, and `receipts(status)`.
+- Includes performance indexes on `events(start_date)`, `events(place)`, `contacts(name)`, `contacts(email)`, `contacts(google_id)`, `contacts(source)`, `event_contacts(event_id, contact_id)`, `vendors(name)`, `vendors(category)`, `vendors(favorite)`, `receipts(event_id)`, `receipts(type)`, `receipts(status)`, `gadgets(name)`, `gadgets(brand)`, `gadgets(status)`, `gadgets(category)`, and `gadgets(slug)`.
 
 ---
 
@@ -142,8 +143,8 @@ The system is modularized under `ierp/core/` with single-command execution throu
 - **Raw-row CLI ingestion**: `uv run ierp ingest-rows <source> <file.json>` (file or stdin).
 - **Regenerate downstream artifacts** (run from repo root):
   ```bash
-  python3 scripts/export_garden.py      # digital-graveyard media/links notes
-  python3 scripts/export_commerce.py    # portfolio pay.json + referrals.json
+  uv run scripts/export_garden.py      # digital garden media/links/gadgets notes
+  uv run scripts/export_commerce.py    # portfolio pay.json + referrals.json
   ```
 - Upserts are idempotent keyed on (media_type, source, title); partial records never erase existing values (COALESCE semantics).
 
@@ -168,9 +169,17 @@ Run commands using **`uv run ierp <command>`**:
 - **List Vendors / Sellers**: `uv run ierp vendors [--category <cat>] [--favorite]`
 - **Show Vendor Details**: `uv run ierp show-vendor <vendor_id>`
 - **Insert Vendor / Seller**: `uv run ierp insert-vendor --name "<name>" [--category "<cat>"] [--location "<loc>"] [--phone "<phone>"] [--favorite]`
+- **List Gadgets / Assets**: `uv run ierp gadgets [--category <cat>] [--status <status>] [--brand <brand>]`
+- **Show Gadget Details**: `uv run ierp show-gadget <id|slug>`
+- **Insert Gadget / Asset**: `uv run ierp insert-gadget --name "<name>" [--brand "<brand>"] [--category "<cat>"] [--status <status>] [--price <val>] [--specs "<specs>"]`
+- **Import Garden Gadgets**: `uv run ierp import-gadgets [<garden_gadget_dir>]`
+- **Export Garden Gadgets**: `uv run ierp export-gadgets [--garden-dir <dir>] [--dry-run]`
 - **Insert / Update Receipt**: `uv run ierp insert-receipt [--id <id>] --event-id <id> --amount <amount> --type <income|cost|expected> [--status <paid|partial|unpaid>] [--notes "<notes>"]`
 - **List Receipts**: `uv run ierp receipts [--event-id <id>] [--type <type>] [--status <status>] [--limit <n>]`
 - **Show Receipt Details**: `uv run ierp show-receipt <id>`
 - **View Financial Balance**: `uv run ierp balance [--event-id <id>]`
+- **Insert / Update Payment Account**: `uv run ierp insert-pay --slug <slug> --name "<name>" --number "<num>" [--category "<cat>"] [--recipient "<name>"]`
+- **List Payment Accounts**: `uv run ierp pay [--category <cat>]`
+- **List Referrals**: `uv run ierp referrals [--category <cat>] [--status <status>] [--public-only]`
 - **Search Events**: `uv run ierp search "<keyword>"`
 - **Link Database**: `uv run ierp link`

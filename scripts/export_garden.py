@@ -27,8 +27,19 @@ from pathlib import Path
 
 import yaml
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+from ierp.core.gadgets import export_garden_gadgets
+
 IERP_DB = os.environ.get("IERP_DB", str(Path(__file__).resolve().parent.parent / "ierp" / "events.db"))
-GARDEN_CONTENT = os.environ.get("GARDEN_CONTENT", os.path.expanduser("~/Projects/digital-graveyard/content"))
+_DEFAULT_GARDEN = (
+    os.path.expanduser("~/Projects/digital-garden/content")
+    if os.path.isdir(os.path.expanduser("~/Projects/digital-garden/content"))
+    else os.path.expanduser("~/Projects/digital-graveyard/content")
+)
+GARDEN_CONTENT = os.environ.get("GARDEN_CONTENT", _DEFAULT_GARDEN)
 
 # media_type -> (content subdir, tags)
 MEDIA_TARGETS = {
@@ -241,6 +252,9 @@ def main() -> int:
     finally:
         conn.close()
 
+    gadget_dir = Path(GARDEN_CONTENT) / "Knowledge" / "Entities" / "Gadget"
+    gadget_res = export_garden_gadgets(garden_dir=gadget_dir, dry_run=args.check, db_path=db)
+
     mode = " [dry-run]" if args.check else ""
     print(f"\nExported from ierp{mode}:")
     for mtype, n in sorted(counts.items()):
@@ -249,6 +263,7 @@ def main() -> int:
         else:
             print(f"  - {mtype:8}: {n:4d} notes")
     print(f"  - links  : {n_links} entries -> {LINKS_NOTE}")
+    print(f"  - gadgets: {gadget_res['notes_written']} notes -> {gadget_dir}")
     return 0
 
 
