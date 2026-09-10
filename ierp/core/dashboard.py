@@ -15,9 +15,15 @@ from typing import Dict, Any, List, Tuple, Optional
 
 from .config import DB_PATH, MEDIA_DIR, TEMPLATES_DIR, C_BOLD, C_GREEN, C_CYAN, C_MAGENTA, C_YELLOW, C_RESET
 from .db import get_db, init_db
+from .decisions import list_decisions
+from .finance import compute_runway, list_commitments, list_snapshots
 from .geocoding import reverse_geocode
 from .google_sync import sync_google_contacts
+from .lifeops import get_maintenance_summary, list_maintenance
 from .merging import auto_merge_contacts, merge_two_contacts
+from .projects import list_projects
+from .radar import compute_radar, get_radar_summary
+from .reviews import list_retrospectives
 
 def load_dashboard_html() -> str:
     """Loads the dashboard HTML template from the templates directory."""
@@ -1046,6 +1052,47 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
                 "types": types,
                 "statuses": statuses
             })
+
+        elif path == "/api/projects":
+            status_f = query.get("status", [""])[0].strip() or None
+            priority_f = query.get("priority", [""])[0].strip() or None
+            limit, offset = parse_pagination(query, default_limit=50)
+            items = list_projects(status=status_f, priority=priority_f, limit=limit, offset=offset)
+            self.send_json({"items": items, "total": len(items)})
+
+        elif path == "/api/decisions":
+            status_f = query.get("status", [""])[0].strip() or None
+            pending_only = query.get("pending_review", ["false"])[0].lower() in ("true", "1")
+            limit, offset = parse_pagination(query, default_limit=50)
+            items = list_decisions(status=status_f, pending_review_only=pending_only, limit=limit, offset=offset)
+            self.send_json({"items": items, "total": len(items)})
+
+        elif path == "/api/runway":
+            data = compute_runway()
+            self.send_json(data)
+
+        elif path == "/api/radar":
+            tier_val = query.get("tier", [""])[0].strip()
+            tier_int = int(tier_val) if tier_val.isdigit() else None
+            overdue_only = query.get("overdue_only", ["false"])[0].lower() in ("true", "1")
+            limit, offset = parse_pagination(query, default_limit=50)
+            items = compute_radar(tier=tier_int, overdue_only=overdue_only, limit=limit, offset=offset)
+            summary = get_radar_summary()
+            self.send_json({"items": items, "summary": summary, "total": len(items)})
+
+        elif path == "/api/maintenance":
+            status_f = query.get("status", ["pending"])[0].strip() or None
+            category_f = query.get("category", [""])[0].strip() or None
+            limit, offset = parse_pagination(query, default_limit=50)
+            items = list_maintenance(status=status_f, category=category_f, limit=limit, offset=offset)
+            summary = get_maintenance_summary()
+            self.send_json({"items": items, "summary": summary, "total": len(items)})
+
+        elif path == "/api/reviews":
+            type_f = query.get("type", [""])[0].strip() or None
+            limit, offset = parse_pagination(query, default_limit=20)
+            items = list_retrospectives(period_type=type_f, limit=limit, offset=offset)
+            self.send_json({"items": items, "total": len(items)})
 
         elif path.startswith("/events_media/"):
             filename = os.path.basename(path)

@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
-# /// script
-# requires-python = ">=3.11"
-# dependencies = ["pyyaml>=6.0.0"]
-# ///
 """
-Exports structured data from the ierp SQLite database into Digital Graveyard
+Exports structured data from the ierp SQLite database into Digital Garden
 markdown notes. This is the read path: garden content is generated FROM the DB.
+Zero external dependencies (standard library only).
 
 Usage:
-    python3 export_garden.py            # regenerate media + links notes
-    python3 export_garden.py --check    # dry-run: report counts only
+    uv run scripts/export_garden.py            # regenerate garden notes
+    uv run scripts/export_garden.py --check    # dry-run: report counts only
 
 Environment overrides:
     IERP_DB          path to ierp events.db      (default: repo-relative)
-    GARDEN_CONTENT   garden content root         (default: ~/Projects/digital-graveyard/content)
+    GARDEN_CONTENT   garden content root         (default: ~/Projects/digital-garden/content)
 """
 
 import argparse
@@ -25,13 +22,16 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import yaml
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from ierp.core.gadgets import export_garden_gadgets
+from ierp.core.garden import (
+    export_garden_decisions,
+    export_garden_projects,
+    export_garden_reviews,
+)
 
 IERP_DB = os.environ.get("IERP_DB", str(Path(__file__).resolve().parent.parent / "ierp" / "events.db"))
 _DEFAULT_GARDEN = (
@@ -254,16 +254,22 @@ def main() -> int:
 
     gadget_dir = Path(GARDEN_CONTENT) / "Knowledge" / "Entities" / "Gadget"
     gadget_res = export_garden_gadgets(garden_dir=gadget_dir, dry_run=args.check, db_path=db)
+    proj_res = export_garden_projects(garden_root=GARDEN_CONTENT, dry_run=args.check, db_path=db)
+    dec_res = export_garden_decisions(garden_root=GARDEN_CONTENT, dry_run=args.check, db_path=db)
+    rev_res = export_garden_reviews(garden_root=GARDEN_CONTENT, dry_run=args.check, db_path=db)
 
     mode = " [dry-run]" if args.check else ""
     print(f"\nExported from ierp{mode}:")
     for mtype, n in sorted(counts.items()):
         if mtype == "_pruned":
-            print(f"  - pruned : {n:4d} stale notes")
+            print(f"  - pruned        : {n:4d} stale notes")
         else:
-            print(f"  - {mtype:8}: {n:4d} notes")
-    print(f"  - links  : {n_links} entries -> {LINKS_NOTE}")
-    print(f"  - gadgets: {gadget_res['notes_written']} notes -> {gadget_dir}")
+            print(f"  - {mtype:14}: {n:4d} notes")
+    print(f"  - links         : {n_links} entries -> {LINKS_NOTE}")
+    print(f"  - gadgets       : {gadget_res['notes_written']} notes -> {gadget_dir}")
+    print(f"  - projects      : {proj_res['notes_written']} notes -> {proj_res['target_dir']}")
+    print(f"  - decisions     : {dec_res['notes_written']} notes -> {dec_res['target_dir']}")
+    print(f"  - retrospectives: {rev_res['notes_written']} notes -> {rev_res['target_dir']}")
     return 0
 
 

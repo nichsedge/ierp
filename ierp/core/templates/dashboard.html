@@ -425,6 +425,10 @@ h1 { font-size: 23px; font-weight: 700; letter-spacing: -0.5px; }
     <button class="tab-btn active" onclick="switchTab('overview', event)">📊 Overview</button>
     <button class="tab-btn" onclick="switchTab('events', event)">📅 Timeline Events</button>
     <button class="tab-btn" onclick="switchTab('contacts', event)">👥 CRM Contacts</button>
+    <button class="tab-btn" onclick="switchTab('projects', event)">🚀 Projects</button>
+    <button class="tab-btn" onclick="switchTab('decisions', event)">⚖️ Decisions</button>
+    <button class="tab-btn" onclick="switchTab('radar', event)">📡 Radar</button>
+    <button class="tab-btn" onclick="switchTab('lifeops', event)">🧭 Life Ops</button>
     <button class="tab-btn" onclick="switchTab('media', event)">🎬 Media Logs</button>
     <button class="tab-btn" onclick="switchTab('vendors', event)">⭐ Vendors</button>
     <button class="tab-btn" onclick="switchTab('links', event)">🔗 Links</button>
@@ -454,6 +458,16 @@ h1 { font-size: 23px; font-weight: 700; letter-spacing: -0.5px; }
         <div class="stat-label">Media Files</div>
         <div class="stat-value" id="stat-media">-</div>
         <div class="stat-icon">🖼️</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Sovereignty Runway</div>
+        <div class="stat-value" id="stat-runway" style="color: var(--accent-cyan); font-size: 26px;">-</div>
+        <div class="stat-icon">🛡️</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Radar Overdue</div>
+        <div class="stat-value" id="stat-radar" style="color: var(--accent-amber); font-size: 26px;">-</div>
+        <div class="stat-icon">📡</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Net Cash</div>
@@ -835,6 +849,92 @@ h1 { font-size: 23px; font-weight: 700; letter-spacing: -0.5px; }
   <div id="receipts-sentinel" class="scroll-sentinel"></div>
   <div id="receipts-footer" class="load-more-wrap"></div>
 </div>
+
+<!-- PROJECTS TAB -->
+<div id="tab-projects" style="display:none;">
+  <div class="toolbar-section">
+    <div class="filter-row">
+      <div class="filter-group">
+        <button class="tag-pill active" onclick="filterProjects('', this)">All Status</button>
+        <button class="tag-pill" onclick="filterProjects('active', this)">Active</button>
+        <button class="tag-pill" onclick="filterProjects('paused', this)">Paused</button>
+        <button class="tag-pill" onclick="filterProjects('completed', this)">Completed</button>
+      </div>
+      <span class="count-badge" id="projects-count">Loading...</span>
+    </div>
+  </div>
+  <div class="contacts-grid" id="projects-list"></div>
+</div>
+
+<!-- DECISIONS TAB -->
+<div id="tab-decisions" style="display:none;">
+  <div class="toolbar-section">
+    <div class="filter-row">
+      <div class="filter-group">
+        <button class="tag-pill active" onclick="filterDecisions('', this)">All Decisions</button>
+        <button class="tag-pill" onclick="filterDecisions('pending', this)">Pending</button>
+        <button class="tag-pill" onclick="filterDecisions('reviewed', this)">Reviewed</button>
+      </div>
+      <span class="count-badge" id="decisions-count">Loading...</span>
+    </div>
+  </div>
+  <div class="events-grid" id="decisions-list"></div>
+</div>
+
+<!-- RADAR TAB -->
+<div id="tab-radar" style="display:none;">
+  <div class="toolbar-section">
+    <div class="filter-row">
+      <div class="filter-group">
+        <button class="tag-pill active" onclick="filterRadar('', this)">All Tiers</button>
+        <button class="tag-pill" onclick="filterRadar('1', this)">Tier 1 (Inner)</button>
+        <button class="tag-pill" onclick="filterRadar('2', this)">Tier 2 (Core)</button>
+        <button class="tag-pill" onclick="filterRadar('3', this)">Tier 3 (Broad)</button>
+        <button class="tag-pill" id="btn-overdue-toggle" onclick="toggleRadarOverdue(this)" style="border-color:var(--accent-amber); color:var(--accent-amber);">⚠️ Overdue Only</button>
+      </div>
+      <span class="count-badge" id="radar-count">Loading...</span>
+    </div>
+  </div>
+  <div class="contacts-grid" id="radar-list"></div>
+</div>
+
+<!-- LIFE OPS TAB -->
+<div id="tab-lifeops" style="display:none;">
+  <div class="stats-grid" id="runway-stats" style="margin-bottom:20px;">
+    <div class="stat-card">
+      <div class="stat-label">Freedom Runway</div>
+      <div class="stat-value" id="lo-runway" style="color:var(--accent-cyan); font-size:26px;">-</div>
+      <div class="stat-icon">🛡️</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Monthly Burn</div>
+      <div class="stat-value" id="lo-burn" style="color:var(--accent-pink); font-size:24px;">-</div>
+      <div class="stat-icon">🔥</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Liquid Capital</div>
+      <div class="stat-value" id="lo-liquid" style="color:var(--accent-green); font-size:24px;">-</div>
+      <div class="stat-icon">💧</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Net Worth</div>
+      <div class="stat-value" id="lo-networth" style="font-size:24px;">-</div>
+      <div class="stat-icon">💎</div>
+    </div>
+  </div>
+  
+  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px; margin-bottom:25px;">
+    <div class="panel">
+      <div class="panel-title"><span>🛠️ Maintenance & Expirations</span></div>
+      <div id="maintenance-list" style="display:flex; flex-direction:column; gap:10px;">Loading...</div>
+    </div>
+    <div class="panel">
+      <div class="panel-title"><span>🔄 Sprint Retrospectives</span></div>
+      <div id="reviews-list" style="display:flex; flex-direction:column; gap:10px;">Loading...</div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="event-modal">
   <div class="modal-content">
     <button class="close-btn" onclick="closeModal()">×</button>
@@ -1010,6 +1110,24 @@ async function loadStats() {
         document.getElementById('stat-outstanding').innerText = 'Rp' + (data.finance.outstanding != null ? data.finance.outstanding.toLocaleString('id-ID') : '-');
       }
     }
+
+    try {
+      const rwRes = await fetch('/api/runway');
+      const rwData = await rwRes.json();
+      const rwEl = document.getElementById('stat-runway');
+      if (rwEl) {
+        rwEl.innerText = rwData.is_infinite ? '∞ Months' : `${rwData.runway_months}m`;
+      }
+    } catch(e) {}
+
+    try {
+      const rdRes = await fetch('/api/radar');
+      const rdData = await rdRes.json();
+      const rdEl = document.getElementById('stat-radar');
+      if (rdEl) {
+        rdEl.innerText = rdData.summary ? `${rdData.summary.total_overdue} Overdue` : '0';
+      }
+    } catch(e) {}
 
     // 1. Render Activity Heatmap
     renderHeatmap(data.daily_counts || {});
@@ -1869,6 +1987,210 @@ function closeModal() {
   document.getElementById('event-modal').style.display = 'none';
 }
 
+// -----------------------------------------------------------------------------
+// Life Navigation Domain Loaders
+// -----------------------------------------------------------------------------
+
+async function loadProjects(status = '') {
+  const listEl = document.getElementById('projects-list');
+  const countEl = document.getElementById('projects-count');
+  if (!listEl) return;
+  listEl.innerHTML = '<div style="color:var(--text-muted); padding:20px;">Loading projects...</div>';
+  try {
+    const url = status ? `/api/projects?status=${encodeURIComponent(status)}` : '/api/projects';
+    const res = await fetch(url);
+    const data = await res.json();
+    countEl.innerText = `${data.total} initiatives`;
+    if (!data.items || data.items.length === 0) {
+      listEl.innerHTML = '<div style="color:var(--text-muted); padding:20px;">No projects found. Add one with <code>uv run ierp insert-project</code></div>';
+      return;
+    }
+    listEl.innerHTML = data.items.map(p => `
+      <div class="contact-card">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+          <div class="contact-name">${escapeHtml(p.title)}</div>
+          <span class="status-pill status-${p.status}">${p.status.toUpperCase()}</span>
+        </div>
+        <div style="font-size:12.5px; color:var(--accent-purple); font-family:'JetBrains Mono', monospace; margin-bottom:8px;">
+          ${p.slug} | Priority: <strong>${p.priority.toUpperCase()}</strong>
+        </div>
+        <div style="font-size:13px; color:var(--text-muted); margin-bottom:12px; line-height:1.4;">
+          ${escapeHtml(p.description || 'No description')}
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--accent-cyan); border-top:1px solid var(--card-border); padding-top:10px;">
+          <span>📅 ${p.start_date || 'N/A'} → ${p.target_date || 'Ongoing'}</span>
+          <span>🔗 ${p.event_count} events | ⚖️ ${p.decision_count} decisions</span>
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    listEl.innerHTML = `<div style="color:var(--accent-pink);">Failed to load projects: ${e.message}</div>`;
+  }
+}
+
+function filterProjects(status, btn) {
+  document.querySelectorAll('#tab-projects .tag-pill').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  loadProjects(status);
+}
+
+async function loadDecisions(status = '') {
+  const listEl = document.getElementById('decisions-list');
+  const countEl = document.getElementById('decisions-count');
+  if (!listEl) return;
+  listEl.innerHTML = '<div style="color:var(--text-muted); padding:20px;">Loading decisions...</div>';
+  try {
+    const url = status ? `/api/decisions?status=${encodeURIComponent(status)}` : '/api/decisions';
+    const res = await fetch(url);
+    const data = await res.json();
+    countEl.innerText = `${data.total} decisions`;
+    if (!data.items || data.items.length === 0) {
+      listEl.innerHTML = '<div style="color:var(--text-muted); padding:20px;">No decisions logged. Record one with <code>uv run ierp insert-decision</code></div>';
+      return;
+    }
+    listEl.innerHTML = data.items.map(d => `
+      <div class="event-card">
+        <div class="event-header">
+          <div class="event-title">⚖️ ${escapeHtml(d.title)}</div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <span class="count-badge" style="color:var(--accent-amber);">Confidence: ${d.confidence}/10</span>
+            <span class="status-pill status-${d.status}">${d.status.toUpperCase()}</span>
+          </div>
+        </div>
+        <div class="event-meta">
+          <span class="meta-item">🎯 Project: <strong>${escapeHtml(d.project_title || 'General')}</strong></span>
+          <span class="meta-item">📅 Review Due: <strong>${d.review_date || 'Unscheduled'}</strong></span>
+        </div>
+        <div style="font-size:13.5px; color:var(--text-main); margin-bottom:8px;">
+          <strong>Choice Made:</strong> ${escapeHtml(d.choice)}
+        </div>
+        ${d.expected_outcome ? `<div style="font-size:13px; color:var(--text-muted); margin-bottom:6px;"><strong>Hypothesis:</strong> ${escapeHtml(d.expected_outcome)}</div>` : ''}
+        ${d.actual_outcome ? `<div style="font-size:13px; color:var(--accent-green); padding:8px; background:rgba(16,185,129,0.08); border-radius:8px; margin-top:8px;"><strong>Actual Result:</strong> ${escapeHtml(d.actual_outcome)}</div>` : ''}
+      </div>
+    `).join('');
+  } catch(e) {
+    listEl.innerHTML = `<div style="color:var(--accent-pink);">Failed to load decisions: ${e.message}</div>`;
+  }
+}
+
+function filterDecisions(status, btn) {
+  document.querySelectorAll('#tab-decisions .tag-pill').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  loadDecisions(status);
+}
+
+let radarTierFilter = '';
+let radarOverdueOnly = false;
+async function loadRadar(tier = '', overdueOnly = false) {
+  radarTierFilter = tier;
+  radarOverdueOnly = overdueOnly;
+  const listEl = document.getElementById('radar-list');
+  const countEl = document.getElementById('radar-count');
+  if (!listEl) return;
+  listEl.innerHTML = '<div style="color:var(--text-muted); padding:20px;">Calculating relationship radar...</div>';
+  try {
+    let url = `/api/radar?limit=100`;
+    if (tier) url += `&tier=${tier}`;
+    if (overdueOnly) url += `&overdue_only=true`;
+    const res = await fetch(url);
+    const data = await res.json();
+    countEl.innerText = `${data.total} contacts evaluated`;
+    if (!data.items || data.items.length === 0) {
+      listEl.innerHTML = '<div style="color:var(--accent-green); padding:20px;">All relationships are in good cadence! 🎉</div>';
+      return;
+    }
+    listEl.innerHTML = data.items.map(c => `
+      <div class="contact-card" style="${c.is_overdue ? 'border-color: rgba(239, 68, 68, 0.4);' : ''}">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
+          <div class="contact-name">${escapeHtml(c.name)}</div>
+          <span class="status-pill" style="${c.is_overdue ? 'background:rgba(239,68,68,0.15); color:var(--accent-pink);' : 'background:rgba(16,185,129,0.15); color:var(--accent-green);'}">
+            ${c.is_overdue ? `${c.days_overdue}d OVERDUE` : 'ACTIVE'}
+          </span>
+        </div>
+        <div class="contact-org">${escapeHtml(c.org || c.email || 'Personal')}</div>
+        <div style="display:flex; gap:8px; margin-bottom:10px; font-size:12px;">
+          <span class="count-badge">Tier ${c.tier}</span>
+          <span class="count-badge" style="color:var(--text-muted);">Cadence: ${c.cadence_days}d</span>
+          <span class="count-badge" style="color:var(--accent-purple);">Interactions: ${c.total_interactions}</span>
+        </div>
+        <div style="font-size:12.5px; color:var(--text-muted); border-top:1px solid var(--card-border); padding-top:8px;">
+          Last Touch: <strong>${c.last_seen_date ? c.last_seen_date.substring(0, 10) : 'Never'}</strong> (${c.days_since_last_touch < 999 ? c.days_since_last_touch + ' days ago' : 'No logged events'})
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    listEl.innerHTML = `<div style="color:var(--accent-pink);">Failed to load radar: ${e.message}</div>`;
+  }
+}
+
+function filterRadar(tier, btn) {
+  document.querySelectorAll('#tab-radar .tag-pill').forEach(b => {
+    if (b.id !== 'btn-overdue-toggle') b.classList.remove('active');
+  });
+  if (btn) btn.classList.add('active');
+  loadRadar(tier, radarOverdueOnly);
+}
+
+function toggleRadarOverdue(btn) {
+  radarOverdueOnly = !radarOverdueOnly;
+  if (radarOverdueOnly) {
+    btn.classList.add('active');
+  } else {
+    btn.classList.remove('active');
+  }
+  loadRadar(radarTierFilter, radarOverdueOnly);
+}
+
+async function loadLifeOps() {
+  try {
+    const rwRes = await fetch('/api/runway');
+    const rw = await rwRes.json();
+    document.getElementById('lo-runway').innerText = rw.is_infinite ? '∞ Months' : `${rw.runway_months} Months`;
+    document.getElementById('lo-burn').innerText = 'Rp' + (rw.monthly_burn || 0).toLocaleString('id-ID');
+    document.getElementById('lo-liquid').innerText = 'Rp' + (rw.liquid_cash || 0).toLocaleString('id-ID');
+    document.getElementById('lo-networth').innerText = 'Rp' + (rw.net_worth || 0).toLocaleString('id-ID');
+
+    const mRes = await fetch('/api/maintenance?limit=10');
+    const mData = await mRes.json();
+    const mList = document.getElementById('maintenance-list');
+    if (!mData.items || mData.items.length === 0) {
+      mList.innerHTML = '<div style="color:var(--text-muted); font-size:13px;">No upcoming maintenance. Schedule with <code>uv run ierp insert-maintenance</code></div>';
+    } else {
+      mList.innerHTML = mData.items.map(m => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:rgba(255,255,255,0.02); border:1px solid var(--card-border); border-radius:10px;">
+          <div>
+            <div style="font-size:14px; font-weight:600; color:#fff;">${escapeHtml(m.name)}</div>
+            <div style="font-size:12px; color:var(--text-muted);">${m.category.toUpperCase()} | Due: <strong>${m.due_date}</strong></div>
+          </div>
+          <span class="status-pill" style="${m.is_overdue ? 'background:rgba(239,68,68,0.15); color:var(--accent-pink);' : 'background:rgba(79,172,254,0.15); color:var(--accent-cyan);'}">
+            ${m.is_overdue ? 'OVERDUE' : m.status.toUpperCase()}
+          </span>
+        </div>
+      `).join('');
+    }
+
+    const rRes = await fetch('/api/reviews?limit=5');
+    const rData = await rRes.json();
+    const rList = document.getElementById('reviews-list');
+    if (!rData.items || rData.items.length === 0) {
+      rList.innerHTML = '<div style="color:var(--text-muted); font-size:13px;">No sprint retrospectives logged. Log with <code>uv run ierp insert-review</code></div>';
+    } else {
+      rList.innerHTML = rData.items.map(r => `
+        <div style="padding:12px; background:rgba(255,255,255,0.02); border:1px solid var(--card-border); border-radius:10px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+            <span style="font-weight:600; font-size:13.5px; color:var(--accent-cyan);">${r.period_start} → ${r.period_end}</span>
+            <span class="count-badge" style="color:var(--accent-amber);">Rating: ${r.rating}/10</span>
+          </div>
+          ${r.wins ? `<div style="font-size:12.5px; color:var(--accent-green); margin-bottom:4px;">✨ <strong>Wins:</strong> ${escapeHtml(r.wins)}</div>` : ''}
+          ${r.focus_next ? `<div style="font-size:12.5px; color:var(--accent-purple);">🎯 <strong>Focus:</strong> ${escapeHtml(r.focus_next)}</div>` : ''}
+        </div>
+      `).join('');
+    }
+  } catch(e) {
+    console.error('Failed to load life ops:', e);
+  }
+}
+
 // Main Tab Navigation
 function switchTab(tabName, evt) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -1877,18 +2199,28 @@ function switchTab(tabName, evt) {
     targetBtn.classList.add('active');
   }
   
-  const allTabs = ['overview', 'events', 'contacts', 'media', 'vendors', 'links', 'commerce', 'receipts'];
+  const allTabs = ['overview', 'events', 'contacts', 'projects', 'decisions', 'radar', 'lifeops', 'media', 'vendors', 'links', 'commerce', 'receipts'];
   allTabs.forEach(t => {
     const el = document.getElementById(`tab-${t}`);
     if (el) el.style.display = t === tabName ? 'block' : 'none';
   });
 
-  if (tabName !== 'overview') {
+  if (tabName === 'projects') {
+    loadProjects();
+  } else if (tabName === 'decisions') {
+    loadDecisions();
+  } else if (tabName === 'radar') {
+    loadRadar();
+  } else if (tabName === 'lifeops') {
+    loadLifeOps();
+  } else if (tabName !== 'overview') {
     const targetKey = tabName === 'commerce' ? 'payments' : tabName;
-    if (tabStates[targetKey].items.length === 0) {
+    if (tabStates[targetKey] && tabStates[targetKey].items.length === 0) {
       resetAndFetch(targetKey);
     }
-    initIntersectionObserver(targetKey);
+    if (tabStates[targetKey]) {
+      initIntersectionObserver(targetKey);
+    }
   }
 }
 

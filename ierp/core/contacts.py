@@ -47,18 +47,23 @@ def insert_contact(
     google_id: str | None = None,
     source: str = "manual",
     date_val: str | None = None,
+    tier: int = 3,
+    cadence_days: int | None = None,
     db_path: Path | None = None,
 ) -> int:
     """Inserts a structured contact record directly into SQLite. Returns contacts.id."""
     init_db(db_path)
+    clean_tier = max(1, min(3, tier))
+    days = cadence_days if cadence_days and cadence_days > 0 else (14 if clean_tier == 1 else (60 if clean_tier == 2 else 180))
+
     with closing(get_db(db_path)) as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO contacts (name, org, client, location, email, phone, notes, google_id, source, date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO contacts (name, org, client, location, email, phone, notes, google_id, source, date, tier, cadence_days)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (name, org, client, location, email, phone, notes, google_id, source, date_val),
+            (name, org, client, location, email, phone, notes, google_id, source, date_val, clean_tier, days),
         )
         conn.commit()
         return int(cursor.lastrowid or 0)
@@ -67,6 +72,7 @@ def insert_contact(
 def list_contacts(
     source_filter: str | None = None,
     q: str | None = None,
+    tier: int | None = None,
     limit: int = 50,
     offset: int = 0,
     sort_col: str = "c.name",
@@ -84,6 +90,10 @@ def list_contacts(
         where_clauses.append("LOWER(c.source) = ?")
         params.append(source_filter.lower())
 
+    if tier is not None:
+        where_clauses.append("c.tier = ?")
+        params.append(tier)
+
     if q:
         where_clauses.append(
             "(c.name LIKE ? OR c.org LIKE ? OR c.client LIKE ? OR c.email LIKE ? OR c.phone LIKE ? OR c.notes LIKE ? OR c.location LIKE ?)"
@@ -100,6 +110,7 @@ def list_contacts(
 
         fetch_sql = f"""
             SELECT c.id, c.name, c.org, c.client, c.location, c.notes, c.email, c.phone, c.source, c.google_id, c.created_at,
+                   c.tier, c.cadence_days,
                    (SELECT COUNT(*) FROM event_contacts ec WHERE ec.contact_id = c.id) as event_count
             FROM contacts c
             WHERE {where_sql}
@@ -121,7 +132,9 @@ def list_contacts(
             "is_google_linked": bool(r[9]),
             "google_id": r[9],
             "created_at": r[10],
-            "event_count": r[11],
+            "tier": r[11] or 3,
+            "cadence_days": r[12] or 180,
+            "event_count": r[13],
         } for r in rows]
 
     return contacts, total
@@ -133,7 +146,7 @@ def get_contact(contact_id: int, db_path: Path | None = None) -> dict[str, Any] 
         cursor = conn.cursor()
         row = cursor.execute(
             """
-            SELECT name, client, date, location, org, notes, email, phone, google_id, source, created_at
+            SELECT name, client, date, location, org, notes, email, phone, google_id, source, created_at, tier, cadence_days
             FROM contacts WHERE id = ?
             """,
             (contact_id,),
@@ -142,7 +155,7 @@ def get_contact(contact_id: int, db_path: Path | None = None) -> dict[str, Any] 
         if not row:
             return None
 
-        name, client, date_val, location, org, notes, email, phone, google_id, source, created_at = row
+        name, client, date_val, location, org, notes, email, phone, google_id, source, created_at, tier_val, cadence_val = row
         event_rows = cursor.execute(
             """
             SELECT e.id, e.title, e.start_date FROM events e
@@ -167,6 +180,8 @@ def get_contact(contact_id: int, db_path: Path | None = None) -> dict[str, Any] 
             "source": source or ("google" if google_id else "manual"),
             "is_google_linked": bool(google_id),
             "created_at": created_at,
+            "tier": tier_val or 3,
+            "cadence_days": cadence_val or 180,
             "events": [{"id": eid, "title": etitle, "start_date": estart} for eid, etitle, estart in event_rows],
         }
 

@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from ierp.core.audit import generate_life_audit
 from ierp.core.config import MONTH_MAP
 from ierp.core.dashboard import load_dashboard_html
 from ierp.core.db import get_db, init_db
@@ -27,6 +28,8 @@ from ierp.core.vendors import insert_vendor, list_vendors, get_vendor, toggle_ve
 from ierp.core.media import upsert_media_item, ingest_media_records, list_media, upsert_link, list_links
 from ierp.core.sources import normalize_row, normalize_rows, _iso_date, normalize_title
 from ierp.core.commerce import init_tables as init_commerce_tables, upsert_payment_account, upsert_referral, list_payment_accounts, list_referrals
+from ierp.core.decisions import delete_decision, get_decision, insert_decision, list_decisions, review_decision
+from ierp.core.finance import compute_monthly_burn, compute_runway, insert_commitment, insert_snapshot, list_commitments, list_snapshots
 from ierp.core.gadgets import (
     delete_gadget,
     export_garden_gadgets,
@@ -35,6 +38,16 @@ from ierp.core.gadgets import (
     insert_gadget,
     list_gadgets,
     update_gadget,
+)
+from ierp.core.lifeops import complete_maintenance, get_maintenance, get_maintenance_summary, insert_maintenance, list_maintenance
+from ierp.core.projects import delete_project, get_project, get_project_summary, insert_project, list_projects, update_project
+from ierp.core.radar import compute_radar, get_radar_summary, update_contact_cadence
+from ierp.core.reviews import delete_retrospective, get_retrospective, insert_retrospective, list_retrospectives
+from ierp.core.garden import (
+    export_garden_all,
+    export_garden_decisions,
+    export_garden_projects,
+    export_garden_reviews,
 )
 from ierp.cli import build_parser
 
@@ -57,13 +70,21 @@ class TestIERP(unittest.TestCase):
 
         # Check tables
         tables = [r[0] for r in cursor.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
-        for expected in ["events", "contacts", "event_media", "event_contacts", "sync_state", "vendors", "media_items", "links", "payment_accounts", "referrals", "gadgets"]:
+        for expected in [
+            "events", "contacts", "event_media", "event_contacts", "sync_state", "vendors", 
+            "media_items", "links", "payment_accounts", "referrals", "gadgets", "projects",
+            "decisions", "networth_snapshots", "recurring_commitments", "maintenance_items", "retrospectives"
+        ]:
             self.assertIn(expected, tables)
 
         # Check contacts columns
         cols = [r[1] for r in cursor.execute("PRAGMA table_info(contacts)").fetchall()]
-        for col in ["id", "name", "client", "date", "location", "org", "notes", "email", "phone", "google_id", "source"]:
+        for col in ["id", "name", "client", "date", "location", "org", "notes", "email", "phone", "google_id", "source", "tier", "cadence_days"]:
             self.assertIn(col, cols)
+
+        # Check events columns
+        e_cols = [r[1] for r in cursor.execute("PRAGMA table_info(events)").fetchall()]
+        self.assertIn("project_id", e_cols)
 
         # Check vendors columns
         v_cols = [r[1] for r in cursor.execute("PRAGMA table_info(vendors)").fetchall()]
@@ -474,6 +495,48 @@ class TestIERP(unittest.TestCase):
         self.assertEqual(args_ins_gadget.price, 15000000.0)
         self.assertTrue(hasattr(args_ins_gadget, "func"))
 
+        args_proj = parser.parse_args(["insert-project", "--title", "Sovereign OS", "--priority", "high"])
+        self.assertEqual(args_proj.title, "Sovereign OS")
+        self.assertEqual(args_proj.priority, "high")
+        self.assertTrue(hasattr(args_proj, "func"))
+
+        args_dec = parser.parse_args(["insert-decision", "--title", "Relocate", "--choice", "Bali", "--confidence", "9"])
+        self.assertEqual(args_dec.choice, "Bali")
+        self.assertEqual(args_dec.confidence, 9)
+        self.assertTrue(hasattr(args_dec, "func"))
+
+        args_snap = parser.parse_args(["insert-snapshot", "--liquid", "50000000", "--investments", "150000000"])
+        self.assertEqual(args_snap.liquid, 50000000.0)
+        self.assertEqual(args_snap.investments, 150000000.0)
+        self.assertTrue(hasattr(args_snap, "func"))
+
+        args_com = parser.parse_args(["insert-commitment", "--name", "Rent", "--amount", "5000000", "--category", "housing"])
+        self.assertEqual(args_com.name, "Rent")
+        self.assertEqual(args_com.amount, 5000000.0)
+        self.assertTrue(hasattr(args_com, "func"))
+
+        args_runway = parser.parse_args(["runway"])
+        self.assertTrue(hasattr(args_runway, "func"))
+
+        args_radar = parser.parse_args(["radar", "--tier", "1", "--overdue-only"])
+        self.assertEqual(args_radar.tier, 1)
+        self.assertTrue(args_radar.overdue_only)
+        self.assertTrue(hasattr(args_radar, "func"))
+
+        args_maint = parser.parse_args(["insert-maintenance", "--name", "Bike Oil", "--due-date", "2026-10-01", "--interval", "90"])
+        self.assertEqual(args_maint.name, "Bike Oil")
+        self.assertEqual(args_maint.interval, 90)
+        self.assertTrue(hasattr(args_maint, "func"))
+
+        args_rev = parser.parse_args(["insert-review", "--start", "2026-08-01", "--end", "2026-08-31", "--rating", "8"])
+        self.assertEqual(args_rev.start, "2026-08-01")
+        self.assertEqual(args_rev.rating, 8)
+        self.assertTrue(hasattr(args_rev, "func"))
+
+        args_audit = parser.parse_args(["audit", "--json"])
+        self.assertTrue(args_audit.json)
+        self.assertTrue(hasattr(args_audit, "func"))
+
     def test_gadgets_crud_and_sync(self):
         """Verifies gadget domain service: insert, get, list, update, delete, and garden export/import."""
         # 1. Insert vendor to link
@@ -654,11 +717,437 @@ class TestIERP(unittest.TestCase):
                 self.assertEqual(data["items"][0]["amount"], 1000000)
                 self.assertEqual(data["items"][0]["type"], "income")
 
+            # 9. Test GET /api/projects, /api/decisions, /api/runway, /api/radar, /api/maintenance, /api/reviews
+            with urllib.request.urlopen(f"{base_url}/api/projects") as res:
+                self.assertEqual(res.status, 200)
+                p_data = json.loads(res.read().decode("utf-8"))
+                self.assertIn("items", p_data)
+
+            with urllib.request.urlopen(f"{base_url}/api/decisions") as res:
+                self.assertEqual(res.status, 200)
+                d_data = json.loads(res.read().decode("utf-8"))
+                self.assertIn("items", d_data)
+
+            with urllib.request.urlopen(f"{base_url}/api/runway") as res:
+                self.assertEqual(res.status, 200)
+                rw_data = json.loads(res.read().decode("utf-8"))
+                self.assertIn("runway_months", rw_data)
+
+            with urllib.request.urlopen(f"{base_url}/api/radar") as res:
+                self.assertEqual(res.status, 200)
+                rd_data = json.loads(res.read().decode("utf-8"))
+                self.assertIn("summary", rd_data)
+
+            with urllib.request.urlopen(f"{base_url}/api/maintenance") as res:
+                self.assertEqual(res.status, 200)
+                m_data = json.loads(res.read().decode("utf-8"))
+                self.assertIn("summary", m_data)
+
+            with urllib.request.urlopen(f"{base_url}/api/reviews") as res:
+                self.assertEqual(res.status, 200)
+                rv_data = json.loads(res.read().decode("utf-8"))
+                self.assertIn("items", rv_data)
+
         finally:
             config.DB_PATH = old_db_path
             if server:
                 server.shutdown()
                 server.server_close()
+
+    def test_projects_domain_crud_and_events_link(self):
+        """Verifies projects domain: insert, update, get, list, summary, and linking to events."""
+        pid = insert_project(
+            title="Digital Sovereignty Infra",
+            description="Building offline-first personal data lake",
+            status="active",
+            priority="high",
+            start_date="2026-08-01",
+            target_date="2026-12-31",
+            db_path=self.db_path,
+        )
+        self.assertIsInstance(pid, int)
+
+        proj = get_project(pid, db_path=self.db_path)
+        self.assertIsNotNone(proj)
+        self.assertEqual(proj["title"], "Digital Sovereignty Infra")
+        self.assertEqual(proj["priority"], "high")
+
+        # Insert event linked to project
+        eid, _ = insert_event(
+            title="Deploy SQLite WAL cluster",
+            start_date="2026-08-15",
+            project_id=pid,
+            db_path=self.db_path,
+        )
+
+        # Insert decision linked to project
+        did = insert_decision(
+            title="Choose storage architecture",
+            choice="SQLite WAL mode",
+            project_id=pid,
+            db_path=self.db_path,
+        )
+
+        summary = get_project_summary(pid, db_path=self.db_path)
+        self.assertEqual(len(summary["events"]), 1)
+        self.assertEqual(summary["events"][0]["title"], "Deploy SQLite WAL cluster")
+        self.assertEqual(len(summary["decisions"]), 1)
+        self.assertEqual(summary["decisions"][0]["choice"], "SQLite WAL mode")
+
+        # Update and list
+        update_project(pid, status="completed", db_path=self.db_path)
+        projs = list_projects(status="completed", db_path=self.db_path)
+        self.assertEqual(len(projs), 1)
+
+        delete_project(pid, db_path=self.db_path)
+        self.assertIsNone(get_project(pid, db_path=self.db_path))
+
+    def test_decisions_domain_crud_and_review(self):
+        """Verifies decision journal: logging decisions and completing retrospective review."""
+        did = insert_decision(
+            title="Pivot to Fractional Data Engineering",
+            choice="Accept retainer contract",
+            context="Current job has high meetings to output ratio",
+            expected_outcome="Double free time and increase autonomy",
+            confidence=8,
+            review_date="2026-11-01",
+            db_path=self.db_path,
+        )
+        self.assertIsInstance(did, int)
+
+        d = get_decision(did, db_path=self.db_path)
+        self.assertEqual(d["confidence"], 8)
+        self.assertEqual(d["status"], "pending")
+
+        # Review decision
+        ok = review_decision(
+            did,
+            actual_outcome="Free time increased by 60%, revenue up 25%",
+            status="reviewed",
+            db_path=self.db_path,
+        )
+        self.assertTrue(ok)
+
+        d_reviewed = get_decision(did, db_path=self.db_path)
+        self.assertEqual(d_reviewed["status"], "reviewed")
+        self.assertIn("Free time increased", d_reviewed["actual_outcome"])
+
+        delete_decision(did, db_path=self.db_path)
+        self.assertIsNone(get_decision(did, db_path=self.db_path))
+
+    def test_finance_snapshots_commitments_and_runway(self):
+        """Verifies net worth snapshots, recurring burn commitments, and runway calculation."""
+        # Insert net worth snapshot
+        sid = insert_snapshot(
+            snapshot_date="2026-08-30",
+            liquid_cash=120000000.0,    # 120M IDR liquid
+            investments=300000000.0,    # 300M IDR investments
+            hard_assets=50000000.0,     # 50M IDR assets
+            liabilities=0.0,
+            db_path=self.db_path,
+        )
+        self.assertIsInstance(sid, int)
+
+        snaps = list_snapshots(db_path=self.db_path)
+        self.assertEqual(len(snaps), 1)
+        self.assertEqual(snaps[0]["net_worth"], 470000000.0)
+
+        # Insert commitments
+        cid1 = insert_commitment(
+            name="Apartment Rent",
+            amount=8000000.0,
+            frequency="monthly",
+            category="housing",
+            db_path=self.db_path,
+        )
+        cid2 = insert_commitment(
+            name="Cloud Servers",
+            amount=2000000.0,
+            frequency="monthly",
+            category="cloud",
+            db_path=self.db_path,
+        )
+        self.assertIsInstance(cid1, int)
+        self.assertIsInstance(cid2, int)
+
+        burn = compute_monthly_burn(db_path=self.db_path)
+        self.assertEqual(burn["total_monthly_burn"], 10000000.0)
+        self.assertEqual(burn["commitments_count"], 2)
+
+        # Calculate runway: 120M / 10M = 12.0 months
+        runway = compute_runway(db_path=self.db_path)
+        self.assertEqual(runway["runway_months"], 12.0)
+        self.assertIn("SOVEREIGN", runway["status_label"])
+
+    def test_radar_and_contact_cadence(self):
+        """Verifies contact cadence and reconnection radar overdue detection."""
+        cid = insert_contact(
+            name="Budi Santoso",
+            tier=1,
+            cadence_days=14,
+            db_path=self.db_path,
+        )
+        self.assertIsInstance(cid, int)
+
+        # Without any event interaction, contact is flagged overdue
+        radar = compute_radar(overdue_only=True, db_path=self.db_path)
+        self.assertTrue(any(c["id"] == cid for c in radar))
+
+        # Log an event with this contact today
+        insert_event(
+            title="Catch up coffee with Budi",
+            start_date="2026-09-07",
+            contacts=[cid],
+            db_path=self.db_path,
+        )
+
+        # Re-compute radar: should no longer be overdue
+        radar_after = compute_radar(overdue_only=True, db_path=self.db_path)
+        self.assertFalse(any(c["id"] == cid for c in radar_after))
+
+        summary = get_radar_summary(db_path=self.db_path)
+        self.assertGreaterEqual(summary["total_contacts"], 1)
+
+    def test_maintenance_lifecycle_and_auto_reschedule(self):
+        """Verifies maintenance task completion and automatic recurring rescheduling."""
+        mid = insert_maintenance(
+            name="Motorbike Oil Change",
+            due_date="2026-09-01",
+            interval_days=60,
+            cost=150000.0,
+            category="vehicle",
+            db_path=self.db_path,
+        )
+        self.assertIsInstance(mid, int)
+
+        item = get_maintenance(mid, db_path=self.db_path)
+        self.assertEqual(item["status"], "pending")
+        self.assertTrue(item["is_overdue"])
+
+        # Complete task
+        res = complete_maintenance(mid, cost=160000.0, completion_date="2026-09-07", db_path=self.db_path)
+        self.assertTrue(res["success"])
+        self.assertIsNotNone(res["next_item_id"])
+        self.assertEqual(res["next_due_date"], "2026-11-06")
+
+        # Verify old item completed and new item scheduled
+        completed_item = get_maintenance(mid, db_path=self.db_path)
+        self.assertEqual(completed_item["status"], "completed")
+        self.assertEqual(completed_item["cost"], 160000.0)
+
+        next_item = get_maintenance(res["next_item_id"], db_path=self.db_path)
+        self.assertEqual(next_item["status"], "pending")
+        self.assertEqual(next_item["due_date"], "2026-11-06")
+
+    def test_retrospectives_crud(self):
+        """Verifies sprint retrospective logs: insert, list, get, and delete."""
+        rid = insert_retrospective(
+            period_start="2026-08-01",
+            period_end="2026-08-31",
+            period_type="monthly",
+            wins="Shipped iERP v2 with Sovereign Life OS",
+            drains_burnout="Too much time debugging brittle CSS",
+            lessons="Simplicity and local SQLite WAL mode beat distributed databases",
+            focus_next="Launch Decision Journal and calibrate judgment",
+            rating=9,
+            db_path=self.db_path,
+        )
+        self.assertIsInstance(rid, int)
+
+        retro = get_retrospective(rid, db_path=self.db_path)
+        self.assertEqual(retro["rating"], 9)
+        self.assertIn("Shipped iERP v2", retro["wins"])
+
+        retros = list_retrospectives(period_type="monthly", db_path=self.db_path)
+        self.assertEqual(len(retros), 1)
+
+        delete_retrospective(rid, db_path=self.db_path)
+        self.assertIsNone(get_retrospective(rid, db_path=self.db_path))
+
+    def test_audit_engine(self):
+        """Verifies life audit engine identifies missing data, overdue items, and recommendations."""
+        # 1. On empty DB, audit should flag missing snapshot, commitments, and reviews
+        audit_res = generate_life_audit(db_path=self.db_path)
+        self.assertGreaterEqual(audit_res["actions_needed"], 2)
+        self.assertGreater(audit_res["total_findings"], 0)
+
+        # Check domain presence in findings
+        domains = {f["domain"] for f in audit_res["findings"]}
+        self.assertIn("Treasury", domains)
+        self.assertIn("Decisions", domains)
+        self.assertIn("Life Ops", domains)
+        self.assertIn("Retrospectives", domains)
+
+        # 2. Add snapshot and commitment, verify Treasury actions clear
+        insert_snapshot(liquid_cash=50000000.0, investments=100000000.0, db_path=self.db_path)
+        insert_commitment(name="Rent", amount=5000000.0, category="housing", db_path=self.db_path)
+
+        audit_res_updated = generate_life_audit(db_path=self.db_path)
+        treasury_actions = [
+            f for f in audit_res_updated["findings"]
+            if f["domain"] == "Treasury" and f["severity"] == "action_needed"
+        ]
+        self.assertEqual(len(treasury_actions), 0)
+
+    def test_fts5_events_indexing_and_bm25_search(self):
+        """Verifies SQLite FTS5 virtual table, sync triggers, BM25 ranking, and query fallback."""
+        cursor = self.conn.cursor()
+
+        # 1. Verify events_fts virtual table exists
+        tables = [r[0] for r in cursor.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+        self.assertIn("events_fts", tables)
+
+        # 2. Insert events and verify they are searchable via FTS5
+        eid1, _ = insert_event(
+            title="Deploy SQLite WAL Mode",
+            place="Jakarta",
+            start_date="2026-08-01",
+            tags=["sqlite", "tech"],
+            notes="Configured Write-Ahead Logging for high concurrency.",
+            db_path=self.db_path,
+        )
+        eid2, _ = insert_event(
+            title="Weekend in Bandung",
+            place="Bandung",
+            start_date="2026-08-05",
+            tags=["travel"],
+            notes="Relaxing trip with friends.",
+            db_path=self.db_path,
+        )
+        eid3, _ = insert_event(
+            title="FTS5 Full Text Search Architecture",
+            place="Jakarta",
+            start_date="2026-08-10",
+            tags=["sqlite", "search"],
+            notes="Implemented SQLite FTS5 with BM25 ranking for sub-millisecond timeline queries.",
+            db_path=self.db_path,
+        )
+
+        # 3. FTS5 Search for 'SQLite'
+        results = search_events("SQLite", db_path=self.db_path)
+        self.assertEqual(len(results), 2)
+        found_ids = {r["id"] for r in results}
+        self.assertIn(eid1, found_ids)
+        self.assertIn(eid3, found_ids)
+        self.assertNotIn(eid2, found_ids)
+        # Check snippet presence
+        self.assertTrue(any("SQLite" in r.get("notes_snippet", "") or "SQLite" in r.get("title_snippet", "") for r in results))
+
+        # 4. Search via list_events with q parameter
+        events_list, total_count = list_events(q="Bandung", db_path=self.db_path)
+        self.assertEqual(total_count, 1)
+        self.assertEqual(events_list[0]["id"], eid2)
+
+        # 5. Verify update trigger syncs events_fts
+        cursor.execute("UPDATE events SET title = 'Visit Yogyakarta', place = 'Yogyakarta', notes = 'Exploring Prambanan and Malioboro' WHERE id = ?", (eid2,))
+        self.conn.commit()
+
+        # Searching old term 'Bandung' should return 0, 'Yogyakarta' should return 1
+        self.assertEqual(len(search_events("Bandung", db_path=self.db_path)), 0)
+        yogya_res = search_events("Yogyakarta", db_path=self.db_path)
+        self.assertEqual(len(yogya_res), 1)
+        self.assertEqual(yogya_res[0]["id"], eid2)
+
+        # 6. Verify delete trigger syncs events_fts
+        delete_event(eid1, db_path=self.db_path)
+        self.assertEqual(len(search_events("WAL", db_path=self.db_path)), 0)
+
+        # 7. Query with special characters should not crash (graceful fallback)
+        res_symbols = search_events(":::???***", db_path=self.db_path)
+        self.assertIsInstance(res_symbols, list)
+
+    def test_garden_export_projects_decisions_retrospectives(self):
+        """Verifies exporting Projects, Decisions (PDRs), and Retrospectives to Digital Garden."""
+        with tempfile.TemporaryDirectory() as garden_tmp:
+            garden_dir = Path(garden_tmp)
+
+            # 1. Insert Project with linked event
+            pid = insert_project(
+                slug="sovereign-infra",
+                title="Sovereign Infra",
+                description="Self-hosted zero-dependency personal ERP architecture.",
+                priority="high",
+                start_date="2026-08-01",
+                target_date="2026-12-31",
+                db_path=self.db_path,
+            )
+            insert_event(
+                title="Deploy WAL Engine",
+                place="Jakarta",
+                start_date="2026-08-02",
+                project_id=pid,
+                notes="Enabled non-blocking concurrent SQLite writes.",
+                db_path=self.db_path,
+            )
+
+            # 2. Insert Decision linked to Project
+            did = insert_decision(
+                title="Adopt SQLite Over Postgres",
+                choice="Pure SQLite WAL",
+                context="Evaluating storage layer for offline-first personal operating system.",
+                expected_outcome="Sub-millisecond queries, zero daemon management, zero supply chain bloat.",
+                confidence=9,
+                review_date="2026-11-01",
+                project_id=pid,
+                db_path=self.db_path,
+            )
+            review_decision(
+                did,
+                actual_outcome="Exceeded expectations with zero-cost and instant startup.",
+                status="validated",
+                db_path=self.db_path,
+            )
+
+            # 3. Insert Retrospective
+            insert_retrospective(
+                period_start="2026-08-01",
+                period_end="2026-08-31",
+                period_type="monthly",
+                wins="Shipped FTS5 search and Digital Garden deep sync.",
+                drains_burnout="Manual repetitive documentation sync.",
+                lessons="Automation via agent workflows eliminates friction.",
+                focus_next="Expand mobile GPS ingestion and banking importers.",
+                rating=10,
+                db_path=self.db_path,
+            )
+
+            # 4. Dry run test (should write 0 files)
+            dry_res = export_garden_all(garden_root=garden_dir, dry_run=True, db_path=self.db_path)
+            self.assertTrue(dry_res["dry_run"])
+            self.assertFalse((garden_dir / "Knowledge" / "Projects" / "sovereign-infra.md").exists())
+
+            # 5. Full export test
+            export_res = export_garden_all(garden_root=garden_dir, dry_run=False, db_path=self.db_path)
+            self.assertEqual(export_res["domains"]["projects"]["notes_written"], 1)
+            self.assertEqual(export_res["domains"]["decisions"]["notes_written"], 1)
+            self.assertEqual(export_res["domains"]["reviews"]["notes_written"], 1)
+
+            # Verify Project note and index
+            proj_file = garden_dir / "Knowledge" / "Projects" / "sovereign-infra.md"
+            self.assertTrue(proj_file.exists())
+            proj_content = proj_file.read_text(encoding="utf-8")
+            self.assertIn("title: \"Sovereign Infra\"", proj_content)
+            self.assertIn("publish_external: true", proj_content)
+            self.assertIn("Deploy WAL Engine", proj_content)
+            self.assertTrue((garden_dir / "Knowledge" / "Projects" / "index.md").exists())
+
+            # Verify Decision (PDR) note and index
+            dec_file = garden_dir / "Knowledge" / "Decisions" / "adopt-sqlite-over-postgres.md"
+            self.assertTrue(dec_file.exists())
+            dec_content = dec_file.read_text(encoding="utf-8")
+            self.assertIn("confidence: 9", dec_content)
+            self.assertIn("Pure SQLite WAL", dec_content)
+            self.assertIn("Exceeded expectations", dec_content)
+            self.assertIn("[[Knowledge/Projects/sovereign-infra|Sovereign Infra]]", dec_content)
+            self.assertTrue((garden_dir / "Knowledge" / "Decisions" / "index.md").exists())
+
+            # Verify Retrospective note and index
+            retro_file = garden_dir / "Write" / "Retrospectives" / "2026-08-01_2026-08-31_monthly.md"
+            self.assertTrue(retro_file.exists())
+            retro_content = retro_file.read_text(encoding="utf-8")
+            self.assertIn("Shipped FTS5 search", retro_content)
+            self.assertIn("rating: 10", retro_content)
+            self.assertTrue((garden_dir / "Write" / "Retrospectives" / "index.md").exists())
 
 
 def run_tests():

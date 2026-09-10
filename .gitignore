@@ -45,3 +45,4 @@ ierp/google_token.json
 *.key
 *.pem
 .envrc
+backups/

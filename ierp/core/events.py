@@ -4,6 +4,7 @@ Provides event logging, searching, querying, and linking with zero external depe
 """
 
 import json
+import re
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -12,6 +13,20 @@ from typing import Any
 from .db import get_db, init_db
 from .importers import parse_date_to_iso
 from .linking import link_events_and_contacts
+
+
+def sanitize_fts5_query(query: str) -> str:
+    """
+    Cleans raw user search input into a safe FTS5 MATCH query with prefix matching.
+    Strips dangerous punctuation while preserving words and numbers.
+    """
+    if not query:
+        return ""
+    cleaned = re.sub(r'["\'*():^~+\-{}[\]]', ' ', query).strip()
+    words = cleaned.split()
+    if not words:
+        return ""
+    return " ".join(f'"{w}"*' for w in words)
 
 
 def insert_event(
@@ -23,6 +38,7 @@ def insert_event(
     url: str | None = None,
     notes: str | None = None,
     contacts: list[str | int] | None = None,
+    project_id: int | None = None,
     db_path: Path | None = None,
 ) -> tuple[int, list[str]]:
     """
@@ -45,10 +61,10 @@ def insert_event(
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO events (title, place, start_date, end_date, raw_date, tags, url, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO events (title, place, start_date, end_date, raw_date, tags, url, notes, project_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (title, place, parsed_start, parsed_end, start_date, json.dumps(tag_list), url, notes),
+            (title, place, parsed_start, parsed_end, start_date, json.dumps(tag_list), url, notes, project_id),
         )
         ev_id = int(cursor.lastrowid or 0)
 
@@ -88,9 +104,14 @@ def list_events(
     params: list[Any] = []
 
     if q:
-        where_clauses.append("(e.title LIKE ? OR e.place LIKE ? OR e.notes LIKE ?)")
-        like_q = f"%{q}%"
-        params.extend([like_q, like_q, like_q])
+        fts_q = sanitize_fts5_query(q)
+        if fts_q:
+            where_clauses.append("e.id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)")
+            params.append(fts_q)
+        else:
+            where_clauses.append("(e.title LIKE ? OR e.place LIKE ? OR e.notes LIKE ?)")
+            like_q = f"%{q}%"
+            params.extend([like_q, like_q, like_q])
 
     if tag:
         where_clauses.append("e.tags LIKE ?")
@@ -160,8 +181,10 @@ def get_event(event_id: int, db_path: Path | None = None) -> dict[str, Any] | No
         cursor = conn.cursor()
         row = cursor.execute(
             """
-            SELECT id, title, place, start_date, end_date, raw_date, tags, url, notes, created_at
-            FROM events WHERE id = ?
+            SELECT e.id, e.title, e.place, e.start_date, e.end_date, e.raw_date, e.tags, e.url, e.notes, e.created_at, e.project_id, p.title
+            FROM events e
+            LEFT JOIN projects p ON p.id = e.project_id
+            WHERE e.id = ?
             """,
             (event_id,),
         ).fetchone()
@@ -169,7 +192,7 @@ def get_event(event_id: int, db_path: Path | None = None) -> dict[str, Any] | No
         if not row:
             return None
 
-        eid, title, place, start, end, raw_d, tags_json, url, notes, created_at = row
+        eid, title, place, start, end, raw_d, tags_json, url, notes, created_at, project_id, project_title = row
         try:
             tags_data = json.loads(tags_json) if tags_json else []
         except Exception:
@@ -200,16 +223,67 @@ def get_event(event_id: int, db_path: Path | None = None) -> dict[str, Any] | No
             "url": url,
             "notes": notes,
             "created_at": created_at,
+            "project_id": project_id,
+            "project_title": project_title,
             "contacts": [{"id": c[0], "name": c[1], "org": c[2]} for c in contacts],
             "media": [{"id": m[0], "original_filename": m[1], "stored_path": m[2]} for m in media],
         }
 
 
 def search_events(query: str, limit: int = 50, db_path: Path | None = None) -> list[dict[str, Any]]:
-    """Searches for events matching a query keyword across title, place, tags, and notes."""
-    like_query = f"%{query}%"
+    """
+    Full-text search across events and notes.
+    Uses SQLite FTS5 with BM25 relevance ranking and snippet extraction.
+    Falls back gracefully to SQL LIKE matching if FTS5 query encounters an error.
+    """
+    if not query or not query.strip():
+        return []
+
+    fts_query = sanitize_fts5_query(query)
+
     with closing(get_db(db_path)) as conn:
         cursor = conn.cursor()
+
+        if fts_query:
+            try:
+                sql = """
+                    SELECT e.id, e.title, e.place, e.start_date, e.end_date, e.raw_date, e.tags, e.notes,
+                           bm25(events_fts) as rank,
+                           snippet(events_fts, 0, '[MATCH]', '[/MATCH]', '...', 12) as title_snip,
+                           snippet(events_fts, 2, '[MATCH]', '[/MATCH]', '...', 16) as notes_snip
+                    FROM events_fts
+                    JOIN events e ON e.id = events_fts.rowid
+                    WHERE events_fts MATCH ?
+                    ORDER BY rank ASC, e.start_date DESC
+                    LIMIT ?
+                """
+                rows = cursor.execute(sql, (fts_query, limit)).fetchall()
+                results = []
+                for r in rows:
+                    eid, title, place, start, end, raw_d, tags_json, notes, rank, t_snip, n_snip = r
+                    try:
+                        tags_data = json.loads(tags_json) if tags_json else []
+                    except Exception:
+                        tags_data = []
+                    results.append({
+                        "id": eid,
+                        "title": title,
+                        "place": place,
+                        "start_date": start,
+                        "end_date": end,
+                        "raw_date": raw_d,
+                        "tags": tags_data,
+                        "notes": notes,
+                        "rank": round(float(rank), 4) if rank is not None else 0.0,
+                        "title_snippet": t_snip or title,
+                        "notes_snippet": n_snip or notes,
+                    })
+                return results
+            except Exception:
+                pass
+
+        # Fallback to standard LIKE search
+        like_query = f"%{query}%"
         rows = cursor.execute(
             """
             SELECT id, title, place, start_date, end_date, raw_date, tags, notes
@@ -236,6 +310,9 @@ def search_events(query: str, limit: int = 50, db_path: Path | None = None) -> l
                 "raw_date": raw_d,
                 "tags": tags_data,
                 "notes": notes,
+                "rank": 0.0,
+                "title_snippet": title,
+                "notes_snippet": notes,
             })
         return results
 

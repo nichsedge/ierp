@@ -211,6 +211,10 @@ def init_db(db_path: Path | None = None, verbose: bool = False) -> None:
             cursor.execute("ALTER TABLE contacts ADD COLUMN google_id TEXT")
         if "source" not in cols:
             cursor.execute("ALTER TABLE contacts ADD COLUMN source TEXT DEFAULT 'manual'")
+        if "tier" not in cols:
+            cursor.execute("ALTER TABLE contacts ADD COLUMN tier INTEGER DEFAULT 3")
+        if "cadence_days" not in cols:
+            cursor.execute("ALTER TABLE contacts ADD COLUMN cadence_days INTEGER DEFAULT 60")
         cursor.execute("""
         UPDATE contacts
         SET source = CASE
@@ -220,6 +224,14 @@ def init_db(db_path: Path | None = None, verbose: bool = False) -> None:
         END
         WHERE source IS NULL OR source = 'manual' AND google_id IS NOT NULL;
         """)
+    except Exception:
+        pass
+
+    try:
+        cursor.execute("PRAGMA table_info(events)")
+        e_cols = [row[1] for row in cursor.fetchall()]
+        if "project_id" not in e_cols:
+            cursor.execute("ALTER TABLE events ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL")
     except Exception:
         pass
 
@@ -267,13 +279,117 @@ def init_db(db_path: Path | None = None, verbose: bool = False) -> None:
     except Exception:
         pass
 
+    # Projects / Strategic Initiatives
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS projects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        slug TEXT UNIQUE NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        status TEXT DEFAULT 'active',
+        priority TEXT DEFAULT 'medium',
+        start_date TEXT,
+        target_date TEXT,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+    """)
+
+    # Decision Journal
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS decisions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        context TEXT,
+        choice TEXT NOT NULL,
+        expected_outcome TEXT,
+        confidence INTEGER DEFAULT 7,
+        review_date TEXT,
+        actual_outcome TEXT,
+        status TEXT DEFAULT 'pending',
+        project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+    """)
+
+    # Net Worth Snapshots
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS networth_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        snapshot_date TEXT NOT NULL,
+        liquid_cash REAL DEFAULT 0,
+        investments REAL DEFAULT 0,
+        hard_assets REAL DEFAULT 0,
+        liabilities REAL DEFAULT 0,
+        currency TEXT DEFAULT 'IDR',
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+    """)
+
+    # Recurring Commitments / Fixed Burn Rate
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS recurring_commitments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        category TEXT DEFAULT 'saas',
+        amount REAL NOT NULL,
+        currency TEXT DEFAULT 'IDR',
+        frequency TEXT DEFAULT 'monthly',
+        payment_account_id INTEGER REFERENCES payment_accounts(id) ON DELETE SET NULL,
+        status TEXT DEFAULT 'active',
+        renewal_date TEXT,
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+    """)
+
+    # Life Ops & Preventive Maintenance
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS maintenance_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        category TEXT DEFAULT 'general',
+        due_date TEXT NOT NULL,
+        interval_days INTEGER,
+        status TEXT DEFAULT 'pending',
+        cost REAL DEFAULT 0,
+        notes TEXT,
+        gadget_id INTEGER REFERENCES gadgets(id) ON DELETE SET NULL,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+    """)
+
+    # Sprint Retrospectives / Double-Loop Learning
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS retrospectives (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        period_type TEXT DEFAULT 'monthly',
+        wins TEXT,
+        drains_burnout TEXT,
+        lessons TEXT,
+        focus_next TEXT,
+        rating INTEGER DEFAULT 7,
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+    """)
+
     # Performance Indexes
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_start_date ON events(start_date);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_place ON events(place);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_project ON events(project_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_contacts_google_id ON contacts(google_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_contacts_source ON contacts(source);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_contacts_tier ON contacts(tier);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_event_contacts_pair ON event_contacts(event_id, contact_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_vendors_name ON vendors(name);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_vendors_category ON vendors(category);")
@@ -287,6 +403,18 @@ def init_db(db_path: Path | None = None, verbose: bool = False) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_accounts_category ON payment_accounts(category);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_referrals_category ON referrals(category);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_referrals_status ON referrals(status);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_projects_slug ON projects(slug);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_decisions_status ON decisions(status);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_decisions_review_date ON decisions(review_date);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_decisions_project ON decisions(project_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_snapshots_date ON networth_snapshots(snapshot_date);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_commitments_status ON recurring_commitments(status);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_commitments_cat ON recurring_commitments(category);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_maintenance_due ON maintenance_items(due_date);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_maintenance_status ON maintenance_items(status);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_retrospectives_start ON retrospectives(period_start);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_retrospectives_type ON retrospectives(period_type);")
 
     # Receipts / Receivables
     cursor.execute("""
@@ -334,6 +462,47 @@ def init_db(db_path: Path | None = None, verbose: bool = False) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_gadgets_status ON gadgets(status);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_gadgets_category ON gadgets(category);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_gadgets_slug ON gadgets(slug);")
+
+    # SQLite FTS5 Full-Text Search Virtual Table & Real-Time Sync Triggers
+    cursor.execute("""
+    CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
+        title,
+        place,
+        notes,
+        tags,
+        content='events',
+        content_rowid='id'
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TRIGGER IF NOT EXISTS events_ai AFTER INSERT ON events BEGIN
+        INSERT INTO events_fts(rowid, title, place, notes, tags)
+        VALUES (new.id, new.title, new.place, new.notes, new.tags);
+    END;
+    """)
+
+    cursor.execute("""
+    CREATE TRIGGER IF NOT EXISTS events_ad AFTER DELETE ON events BEGIN
+        INSERT INTO events_fts(events_fts, rowid, title, place, notes, tags)
+        VALUES ('delete', old.id, old.title, old.place, old.notes, old.tags);
+    END;
+    """)
+
+    cursor.execute("""
+    CREATE TRIGGER IF NOT EXISTS events_au AFTER UPDATE ON events BEGIN
+        INSERT INTO events_fts(events_fts, rowid, title, place, notes, tags)
+        VALUES ('delete', old.id, old.title, old.place, old.notes, old.tags);
+        INSERT INTO events_fts(rowid, title, place, notes, tags)
+        VALUES (new.id, new.title, new.place, new.notes, new.tags);
+    END;
+    """)
+
+    # Populate/Rebuild FTS index idempotently
+    try:
+        cursor.execute("INSERT INTO events_fts(events_fts) VALUES('rebuild');")
+    except Exception:
+        pass
 
     conn.commit()
     conn.close()
