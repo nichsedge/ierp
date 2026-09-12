@@ -35,9 +35,9 @@ from ierp.core.garden import (
 
 IERP_DB = os.environ.get("IERP_DB", str(Path(__file__).resolve().parent.parent / "ierp" / "events.db"))
 _DEFAULT_GARDEN = (
-    os.path.expanduser("~/Projects/digital-garden/content")
-    if os.path.isdir(os.path.expanduser("~/Projects/digital-garden/content"))
-    else os.path.expanduser("~/Projects/digital-graveyard/content")
+    os.path.expanduser("~/Projects/digital-graveyard/content")
+    if os.path.isdir(os.path.expanduser("~/Projects/digital-graveyard/content"))
+    else os.path.expanduser("~/Projects/digital-garden/content")
 )
 GARDEN_CONTENT = os.environ.get("GARDEN_CONTENT", _DEFAULT_GARDEN)
 

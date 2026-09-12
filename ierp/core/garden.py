@@ -32,15 +32,15 @@ def resolve_garden_root(custom_path: Path | str | None = None) -> Path:
         return Path(env_dir).expanduser().resolve()
 
     candidates = [
-        Path.home() / "Projects" / "digital-garden" / "content",
         Path.home() / "Projects" / "digital-graveyard" / "content",
+        Path.home() / "Projects" / "digital-garden" / "content",
     ]
     for c in candidates:
         if c.is_dir():
             return c
 
     # Default fallback
-    return Path.home() / "Projects" / "digital-garden" / "content"
+    return Path.home() / "Projects" / "digital-graveyard" / "content"
 
 
 def slugify(text: str) -> str:
