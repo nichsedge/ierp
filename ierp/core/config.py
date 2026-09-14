@@ -9,6 +9,7 @@ from pathlib import Path
 # Base Paths
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = BASE_DIR / "core" / "templates"
+STATIC_DIR = BASE_DIR / "core" / "static"
 DB_PATH = Path(os.environ.get("IERP_DB", BASE_DIR / "events.db")).resolve()
 MEDIA_DIR = Path(os.environ.get("IERP_MEDIA_DIR", BASE_DIR / "events_media")).resolve()
 GOOGLE_CREDS_PATH = Path(os.environ.get("IERP_GOOGLE_CREDS", BASE_DIR / "google_credentials.json")).resolve()

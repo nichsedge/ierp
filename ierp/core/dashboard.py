@@ -13,7 +13,7 @@ import webbrowser
 from datetime import datetime
 from typing import Dict, Any, List, Tuple, Optional
 
-from .config import DB_PATH, MEDIA_DIR, TEMPLATES_DIR, C_BOLD, C_GREEN, C_CYAN, C_MAGENTA, C_YELLOW, C_RESET
+from .config import DB_PATH, MEDIA_DIR, TEMPLATES_DIR, STATIC_DIR, C_BOLD, C_GREEN, C_CYAN, C_MAGENTA, C_YELLOW, C_RESET
 from .db import get_db, init_db
 from .decisions import list_decisions
 from .finance import compute_runway, list_commitments, list_snapshots
@@ -192,16 +192,6 @@ REFERRAL_SORT_COLS = {
     "created_at": "r.created_at",
 }
 
-RECEIPT_SORT_COLS = {
-    "id": "r.id",
-    "event_id": "r.event_id",
-    "amount": "r.amount",
-    "type": "r.type",
-    "status": "r.status",
-    "created_at": "r.created_at",
-    "updated_at": "r.updated_at",
-}
-
 
 class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -219,9 +209,12 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
+
+    def do_HEAD(self):
+        self.do_GET()
 
     def do_POST(self):
         parsed_url = urllib.parse.urlparse(self.path)
@@ -295,7 +288,36 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(DASHBOARD_HTML.encode("utf-8"))
+            self.wfile.write(load_dashboard_html().encode("utf-8"))
+
+        elif path.startswith("/static/"):
+            rel_path = path[len("/static/"):]
+            safe_path = (STATIC_DIR / rel_path).resolve()
+            if not str(safe_path).startswith(str(STATIC_DIR.resolve())) or not safe_path.is_file():
+                self.send_error(404, "Static file not found")
+                return
+
+            suffix = safe_path.suffix.lower()
+            mime_types = {
+                ".css": "text/css; charset=utf-8",
+                ".js": "application/javascript; charset=utf-8",
+                ".json": "application/json; charset=utf-8",
+                ".svg": "image/svg+xml",
+                ".png": "image/png",
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".ico": "image/x-icon",
+                ".woff": "font/woff",
+                ".woff2": "font/woff2",
+            }
+            content_type = mime_types.get(suffix, "application/octet-stream")
+            content = safe_path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(content)
 
         elif path == "/api/stats":
             conn = get_db()
@@ -348,24 +370,13 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
             """).fetchall()
             media_summary = {mt: cnt for mt, cnt in media_raw if mt}
 
-            # Monthly cashflow
-            cf_raw = cursor.execute("""
-                SELECT strftime('%Y-%m', created_at) as ym, type, SUM(amount)
-                FROM receipts
-                WHERE created_at IS NOT NULL
-                GROUP BY ym, type ORDER BY ym DESC LIMIT 12
-            """).fetchall()
-            cashflow_map: dict[str, dict[str, float]] = {}
-            for ym, rtype, total_amt in cf_raw:
-                if not ym:
-                    continue
-                if ym not in cashflow_map:
-                    cashflow_map[ym] = {"year_month": ym, "income": 0.0, "cost": 0.0, "expected": 0.0}
-                if rtype in ("income", "cost", "expected"):
-                    cashflow_map[ym][rtype] = float(total_amt or 0.0)
-            cashflow = list(cashflow_map.values())
-
             conn.close()
+
+            # Monthly cashflow from Sans Finance SSOT
+            from ierp.core.finance import get_sansfinance_cashflow, compute_sansfinance_summary
+            cashflow = get_sansfinance_cashflow(limit=12)
+            finance_summary = compute_sansfinance_summary()
+            rw = compute_runway()
 
             res = {
                 "total_events": total_events,
@@ -378,14 +389,18 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
                 "top_places": top_places,
                 "media_summary": media_summary,
                 "cashflow": cashflow,
+                "finance": {
+                    "liquid_cash": rw["liquid_cash"],
+                    "net_worth": rw["net_worth"],
+                    "monthly_burn": rw["monthly_burn"],
+                    "runway_months": rw["runway_months"],
+                    "is_infinite": rw["is_infinite"],
+                    "status_label": rw["status_label"],
+                    "net_cash": rw["liquid_cash"],
+                    "net_position": rw["net_worth"],
+                    "sansfinance_summary": finance_summary,
+                },
             }
-            # Add financial summary
-            from ierp.core.receipts import compute_balance
-            try:
-                bal = compute_balance()
-                res["finance"] = bal
-            except Exception:
-                pass
             self.send_json(res)
 
         elif path == "/api/events":
@@ -977,82 +992,6 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
                 "referrals": {"items": referrals, "total": len(referrals)}
             })
 
-        elif path == "/api/receipts":
-            type_filter = query.get("type", [""])[0].strip()
-            status_filter = query.get("status", [""])[0].strip()
-            event_filter = query.get("event_id", [""])[0].strip()
-            q = query.get("q", [""])[0].strip()
-            limit, offset = parse_pagination(query, default_limit=50)
-            sort_col, sort_dir = parse_sort(query, RECEIPT_SORT_COLS, default_col="created_at", default_dir="DESC")
-
-            conn = get_db()
-            cursor = conn.cursor()
-            where_clauses = ["1=1"]
-            params = []
-
-            if type_filter and type_filter != "all":
-                where_clauses.append("r.type = ?")
-                params.append(type_filter)
-            if status_filter and status_filter != "all":
-                where_clauses.append("r.status = ?")
-                params.append(status_filter)
-            if event_filter:
-                try:
-                    eid = int(event_filter)
-                    where_clauses.append("r.event_id = ?")
-                    params.append(eid)
-                except ValueError:
-                    pass
-            if q:
-                where_clauses.append("(e.title LIKE ? OR e.notes LIKE ? OR r.notes LIKE ?)")
-                like_q = f"%{q}%"
-                params.extend([like_q, like_q, like_q])
-
-            where_sql = " AND ".join(where_clauses)
-            total = cursor.execute(f"SELECT COUNT(*) FROM receipts r LEFT JOIN events e ON r.event_id = e.id WHERE {where_sql}", params).fetchone()[0]
-
-            fetch_sql = f"""
-                SELECT r.id, r.event_id, r.amount, r.type, r.status, r.notes, r.created_at, r.updated_at,
-                       e.title, e.start_date, e.tags
-                FROM receipts r
-                LEFT JOIN events e ON r.event_id = e.id
-                WHERE {where_sql}
-                ORDER BY {sort_col} {sort_dir}, r.id DESC
-                LIMIT ? OFFSET ?
-            """
-            rows = cursor.execute(fetch_sql, [*params, limit, offset]).fetchall()
-
-            types_raw = cursor.execute("SELECT DISTINCT type FROM receipts WHERE type IS NOT NULL ORDER BY type").fetchall()
-            types = [t[0] for t in types_raw if t[0]]
-
-            statuses_raw = cursor.execute("SELECT DISTINCT status FROM receipts WHERE status IS NOT NULL ORDER BY status").fetchall()
-            statuses = [s[0] for s in statuses_raw if s[0]]
-
-            conn.close()
-
-            items = [{
-                "id": r[0],
-                "event_id": r[1],
-                "amount": r[2],
-                "type": r[3],
-                "status": r[4],
-                "notes": r[5],
-                "created_at": r[6],
-                "updated_at": r[7],
-                "event_title": r[8],
-                "event_date": r[9],
-                "event_tags": json.loads(r[10]) if r[10] else []
-            } for r in rows]
-
-            self.send_json({
-                "items": items,
-                "total": total,
-                "limit": limit,
-                "offset": offset,
-                "types": types,
-                "statuses": statuses
-            })
-
         elif path == "/api/projects":
             status_f = query.get("status", [""])[0].strip() or None
             priority_f = query.get("priority", [""])[0].strip() or None
@@ -1146,10 +1085,10 @@ def start_dashboard_server(port: int = 8000, open_browser: bool = True) -> None:
 
     server_address = ("", actual_port)
     try:
-        httpd = http.server.HTTPServer(server_address, DashboardRequestHandler)
+        httpd = http.server.ThreadingHTTPServer(server_address, DashboardRequestHandler)
     except OSError:
         server_address = ("", 0)
-        httpd = http.server.HTTPServer(server_address, DashboardRequestHandler)
+        httpd = http.server.ThreadingHTTPServer(server_address, DashboardRequestHandler)
         actual_port = httpd.server_port
 
     lan_ip = get_local_ip()

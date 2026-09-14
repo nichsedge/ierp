@@ -39,7 +39,7 @@ from ierp.core.config import (
     DB_PATH,
     media_profiles,
 )
-from ierp.core.contacts import get_contact, list_contacts
+from ierp.core.contacts import get_contact, insert_contact, list_contacts, update_contact
 from ierp.core.dashboard import start_dashboard_server
 from ierp.core.db import get_db, init_db
 from ierp.core.decisions import (
@@ -48,7 +48,14 @@ from ierp.core.decisions import (
     list_decisions,
     review_decision,
 )
-from ierp.core.events import get_event, insert_event, list_events as query_events, search_events as query_search_events
+from ierp.core.events import (
+    delete_event,
+    get_event,
+    insert_event,
+    list_events as query_events,
+    search_events as query_search_events,
+    update_event,
+)
 from ierp.core.finance import (
     compute_monthly_burn,
     compute_runway,
@@ -92,7 +99,6 @@ from ierp.core.radar import (
     get_radar_summary,
     update_contact_cadence,
 )
-from ierp.core.receipts import compute_balance, get_receipt, list_receipts, upsert_receipt
 from ierp.core.reviews import (
     get_retrospective,
     insert_retrospective,
@@ -159,6 +165,30 @@ def handle_insert_event(args: argparse.Namespace) -> None:
             print(f"{C_GREEN}Explicitly linked: {', '.join(linked_names)}{C_RESET}")
     except Exception as e:
         print(f"{C_RED}Failed to insert event: {e}{C_RESET}")
+
+
+def handle_update_event(args: argparse.Namespace) -> None:
+    try:
+        ok, linked_names = update_event(
+            event_id=args.id,
+            title=args.title,
+            place=args.place,
+            start_date=args.start_date,
+            end_date=args.end_date,
+            tags=args.tags,
+            url=args.url,
+            notes=args.notes,
+            contacts=args.contacts,
+            project_id=getattr(args, "project_id", None),
+        )
+        if ok:
+            print(f"{C_GREEN}Successfully updated event #{args.id}{C_RESET}")
+            if linked_names:
+                print(f"{C_GREEN}Explicitly linked: {', '.join(linked_names)}{C_RESET}")
+        else:
+            print(f"{C_RED}Event #{args.id} not found.{C_RESET}")
+    except Exception as e:
+        print(f"{C_RED}Failed to update event: {e}{C_RESET}")
 
 
 def handle_list_events(args: argparse.Namespace) -> None:
@@ -254,6 +284,46 @@ def handle_show_event(args: argparse.Namespace) -> None:
 # -----------------------------------------------------------------------------
 # Handlers: Contacts
 # -----------------------------------------------------------------------------
+
+def handle_insert_contact(args: argparse.Namespace) -> None:
+    try:
+        cid = insert_contact(
+            name=args.name,
+            org=args.org,
+            client=args.client,
+            location=args.location,
+            email=args.email,
+            phone=args.phone,
+            notes=args.notes,
+            tier=args.tier if args.tier is not None else 3,
+            cadence_days=args.cadence,
+        )
+        print(f"{C_GREEN}Successfully inserted contact #{cid}: {args.name}{C_RESET}")
+    except Exception as e:
+        print(f"{C_RED}Failed to insert contact: {e}{C_RESET}")
+
+
+def handle_update_contact(args: argparse.Namespace) -> None:
+    try:
+        ok = update_contact(
+            contact_id=args.id,
+            name=args.name,
+            org=args.org,
+            client=args.client,
+            location=args.location,
+            email=args.email,
+            phone=args.phone,
+            notes=args.notes,
+            tier=args.tier,
+            cadence_days=args.cadence,
+        )
+        if ok:
+            print(f"{C_GREEN}Successfully updated contact #{args.id}{C_RESET}")
+        else:
+            print(f"{C_RED}Contact #{args.id} not found.{C_RESET}")
+    except Exception as e:
+        print(f"{C_RED}Failed to update contact: {e}{C_RESET}")
+
 
 def handle_list_contacts(args: argparse.Namespace) -> None:
     init_db()
@@ -401,7 +471,6 @@ def handle_insert_gadget(args: argparse.Namespace) -> None:
             serial_number=args.serial,
             vendor_id=args.vendor_id,
             event_id=args.event_id,
-            receipt_id=args.receipt_id,
             notes=args.notes,
             is_public=not args.private,
         )
@@ -455,8 +524,6 @@ def handle_show_gadget(args: argparse.Namespace) -> None:
         print(f"{C_BOLD}Vendor:{C_RESET}        {g['vendor_name']} (#{g['vendor_id']})")
     if g.get("event_title"):
         print(f"{C_BOLD}Linked Event:{C_RESET}  {g['event_title']} (#{g['event_id']})")
-    if g.get("receipt_amount"):
-        print(f"{C_BOLD}Receipt Amount:{C_RESET}Rp{g['receipt_amount']:,.0f} (#{g['receipt_id']})")
     if g.get("notes"):
         print(f"\n{C_BOLD}--- Notes ---{C_RESET}")
         print(g["notes"])
@@ -491,85 +558,30 @@ def handle_garden_export(args: argparse.Namespace) -> None:
 
 
 # -----------------------------------------------------------------------------
-# Handlers: Receipts & Balances
+# Handlers: Cashflow & Financial Intelligence (Sans Finance SSOT)
 # -----------------------------------------------------------------------------
 
-def handle_insert_receipt(args: argparse.Namespace) -> None:
-    init_db()
-    ev = get_event(args.event_id)
-    if not ev:
-        print(f"{C_RED}Event ID {args.event_id} not found.{C_RESET}")
+def handle_cashflow(args: argparse.Namespace) -> None:
+    from ierp.core.finance import get_sansfinance_cashflow, compute_sansfinance_summary
+    cf = get_sansfinance_cashflow(limit=args.limit)
+    summary = compute_sansfinance_summary()
+    if not cf:
+        print("No cashflow records found in Sans Finance snapshot.")
         return
 
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        rid = upsert_receipt(
-            cur,
-            event_id=args.event_id,
-            amount=args.amount,
-            type=args.type,
-            status=args.status,
-            notes=args.notes,
-            receipt_id=args.id,
-        )
-        conn.commit()
-        conn.close()
-        action_verb = "updated" if args.id else "inserted"
-        print(f"{C_GREEN}Receipt #{rid} {action_verb}: Rp{args.amount:,.0f} ({args.type}/{args.status}) for event #{args.event_id} — {ev['title']}{C_RESET}")
-    except ValueError as e:
-        print(f"{C_RED}{e}{C_RESET}")
-
-
-def handle_list_receipts(args: argparse.Namespace) -> None:
-    rows = list_receipts(event_id=args.event_id, type=args.type, status=args.status)
-    if not rows:
-        print("No receipts found.")
-        return
-    rows = rows[:args.limit]
-    print(f"\n{C_BOLD}{'ID':<5} | {'Event':<5} | {'Amount':<14} | {'Type':<9} | {'Status':<8} | {'Date':<12} | Event Title{C_RESET}")
-    print("-" * 105)
-    for r in rows:
-        ev_title = (r.get("event_title") or "")[:24]
-        date = (r.get("event_date") or "")[:12]
-        print(f"{r['id']:<5} | {r['event_id']:<5} | Rp{r['amount']:>11,.0f} | {r['type']:<9} | {r['status']:<8} | {date:<12} | {ev_title}")
-    print()
-
-
-def handle_show_receipt(args: argparse.Namespace) -> None:
-    r = get_receipt(args.id)
-    if not r:
-        print(f"{C_RED}Receipt with ID {args.id} not found.{C_RESET}")
-        return
-    print(f"\n{C_BOLD}{C_GREEN}=== Receipt #{r['id']} ==={C_RESET}")
-    print(f"{C_BOLD}Event ID:{C_RESET}  {r['event_id']}")
-    if r.get("event_title"):
-        print(f"{C_BOLD}Event Title:{C_RESET} {r['event_title']}")
-    if r.get("event_date"):
-        print(f"{C_BOLD}Event Date:{C_RESET}  {r['event_date'][:10]}")
-    print(f"{C_BOLD}Amount:{C_RESET}    Rp{r['amount']:,.0f}")
-    print(f"{C_BOLD}Type:{C_RESET}      {r['type']}")
-    print(f"{C_BOLD}Status:{C_RESET}   {r['status']}")
-    if r.get("notes"):
-        print(f"\n{C_BOLD}--- Notes ---{C_RESET}")
-        print(r["notes"])
-    print(f"\n{C_BOLD}Created:{C_RESET}  {r['created_at']}")
-    if r.get("updated_at"):
-        print(f"{C_BOLD}Updated:{C_RESET}  {r['updated_at']}")
-    print(f"{C_BOLD}{C_GREEN}========================{C_RESET}\n")
-
-
-def handle_balance(args: argparse.Namespace) -> None:
-    bal = compute_balance(event_id=args.event_id)
-    title = f"=== Financial Position (Event #{args.event_id}) ===" if args.event_id else "=== Financial Position ==="
-    print(f"\n{C_BOLD}{C_GREEN}{title}{C_RESET}\n")
-    print(f"  {C_BOLD}Total Income:{C_RESET}    Rp{bal['total_income']:,.0f}")
-    print(f"  {C_BOLD}Total Costs:{C_RESET}     Rp{bal['total_costs']:,.0f}")
-    print(f"  {C_BOLD}Total Expected:{C_RESET}  Rp{bal['total_expected']:,.0f}")
-    print(f"  {C_BOLD}Outstanding:{C_RESET}     Rp{bal['outstanding']:,.0f}")
-    print(f"\n  {C_BOLD}Net Cash:{C_RESET}       Rp{bal['net_cash']:,.0f}")
-    print(f"  {C_BOLD}Net Position:{C_RESET}    Rp{bal['net_position']:,.0f}")
-    print(f"\n{C_BOLD}{C_GREEN}{'=' * len(title)}{C_RESET}\n")
+    print(f"\n{C_BOLD}{C_GREEN}=== Monthly Cashflow (Sans Finance SSOT) ==={C_RESET}\n")
+    print(f"{C_BOLD}{'Month':<10} | {'Income':<16} | {'Expenses':<16} | Net Cashflow{C_RESET}")
+    print("-" * 62)
+    for c in cf:
+        inc = c.get("income", 0.0)
+        exp = c.get("cost", 0.0)
+        net = inc - exp
+        net_color = C_GREEN if net >= 0 else C_RED
+        print(f"{c['year_month']:<10} | Rp{inc:>13,.0f} | Rp{exp:>13,.0f} | {net_color}Rp{net:>13,.0f}{C_RESET}")
+    print("-" * 62)
+    print(f"Total Income:   Rp{summary['total_income']:,.0f}")
+    print(f"Total Expenses: Rp{summary['total_costs']:,.0f}")
+    print(f"Net Savings:    Rp{summary['net_cash']:,.0f}\n")
 
 
 # -----------------------------------------------------------------------------
@@ -1195,6 +1207,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_show.add_argument("id", type=int, help="Event database ID")
     p_show.set_defaults(func=handle_show_event)
 
+    # update-event
+    p_update = subparsers.add_parser("update-event", help="Update an existing event record")
+    p_update.add_argument("id", type=int, help="Event database ID to update")
+    p_update.add_argument("--title", help="New event title")
+    p_update.add_argument("--place", help="New event location/place name")
+    p_update.add_argument("--start-date", help="New event start date (ISO or natural string)")
+    p_update.add_argument("--end-date", help="New event end date (ISO or natural string)")
+    p_update.add_argument("--tags", help="Comma-separated tags or categories")
+    p_update.add_argument("--url", help="Event URL")
+    p_update.add_argument("--notes", help="Event notes/body content")
+    p_update.add_argument("--contact", action="append", dest="contacts", help="Explicitly link this contact (name or ID; repeatable)")
+    p_update.add_argument("--project-id", type=int, help="Linked project / strategic initiative ID")
+    p_update.set_defaults(func=handle_update_event)
+
     # contacts
     p_contacts = subparsers.add_parser("contacts", help="List contacts")
     p_contacts.add_argument("--source", choices=["manual", "google", "merged", "all"], default="all", help="Filter by contact source")
@@ -1204,6 +1230,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_show_contact = subparsers.add_parser("show-contact", help="Show contact details and linked events")
     p_show_contact.add_argument("id", type=int, help="Contact database ID")
     p_show_contact.set_defaults(func=handle_show_contact)
+
+    p_insert_contact = subparsers.add_parser("insert-contact", help="Insert a contact record directly")
+    p_insert_contact.add_argument("--name", required=True, help="Contact full name")
+    p_insert_contact.add_argument("--org", help="Organization / company / university")
+    p_insert_contact.add_argument("--client", help="Client, team, or department")
+    p_insert_contact.add_argument("--location", help="Location or university alma mater")
+    p_insert_contact.add_argument("--email", help="Contact email address")
+    p_insert_contact.add_argument("--phone", help="Contact phone number")
+    p_insert_contact.add_argument("--notes", help="Contact notes or background")
+    p_insert_contact.add_argument("--tier", type=int, choices=[1, 2, 3], default=3, help="Dunbar relationship tier (1, 2, 3)")
+    p_insert_contact.add_argument("--cadence", type=int, help="Touchpoint cadence in days")
+    p_insert_contact.set_defaults(func=handle_insert_contact)
+
+    p_update_contact = subparsers.add_parser("update-contact", help="Update an existing contact record")
+    p_update_contact.add_argument("id", type=int, help="Contact database ID to update")
+    p_update_contact.add_argument("--name", help="New contact full name")
+    p_update_contact.add_argument("--org", help="New organization / company / university")
+    p_update_contact.add_argument("--client", help="New client, team, or department")
+    p_update_contact.add_argument("--location", help="New location or alma mater")
+    p_update_contact.add_argument("--email", help="New contact email address")
+    p_update_contact.add_argument("--phone", help="New contact phone number")
+    p_update_contact.add_argument("--notes", help="New contact notes or background")
+    p_update_contact.add_argument("--tier", type=int, choices=[1, 2, 3], help="New Dunbar relationship tier (1, 2, 3)")
+    p_update_contact.add_argument("--cadence", type=int, help="New touchpoint cadence in days")
+    p_update_contact.set_defaults(func=handle_update_contact)
 
     # vendors
     p_vendors = subparsers.add_parser("vendors", help="List vendors/sellers")
@@ -1241,7 +1292,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_insert_gadget.add_argument("--serial", help="Serial number or IMEI")
     p_insert_gadget.add_argument("--vendor-id", type=int, help="Linked vendor ID")
     p_insert_gadget.add_argument("--event-id", type=int, help="Linked event ID")
-    p_insert_gadget.add_argument("--receipt-id", type=int, help="Linked receipt ID")
     p_insert_gadget.add_argument("--notes", help="Notes or qualitative description")
     p_insert_gadget.add_argument("--private", action="store_true", help="Exclude from public digital garden export")
     p_insert_gadget.set_defaults(func=handle_insert_gadget)
@@ -1282,30 +1332,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_garden_export.add_argument("--dry-run", action="store_true", help="Simulate export without writing files")
     p_garden_export.set_defaults(func=handle_garden_export)
 
-    # receipts
-    p_insert_receipt = subparsers.add_parser("insert-receipt", help="Record or update a monetary receipt against an event")
-    p_insert_receipt.add_argument("--id", type=int, help="Receipt ID (if updating existing receipt)")
-    p_insert_receipt.add_argument("--event-id", type=int, required=True, help="Event ID to link this receipt to")
-    p_insert_receipt.add_argument("--amount", type=float, required=True, help="Amount in Rupiah")
-    p_insert_receipt.add_argument("--type", choices=["income", "cost", "expected"], required=True, help="Transaction type")
-    p_insert_receipt.add_argument("--status", choices=["paid", "partial", "unpaid"], default="paid", help="Payment status")
-    p_insert_receipt.add_argument("--notes", help="Notes / description")
-    p_insert_receipt.set_defaults(func=handle_insert_receipt)
-
-    p_receipts = subparsers.add_parser("receipts", help="List receipts with optional filters")
-    p_receipts.add_argument("--event-id", type=int, help="Filter by event ID")
-    p_receipts.add_argument("--type", choices=["income", "cost", "expected"], help="Filter by type")
-    p_receipts.add_argument("--status", choices=["paid", "partial", "unpaid"], help="Filter by status")
-    p_receipts.add_argument("--limit", type=int, default=50)
-    p_receipts.set_defaults(func=handle_list_receipts)
-
-    p_show_receipt = subparsers.add_parser("show-receipt", help="Show full receipt details")
-    p_show_receipt.add_argument("id", type=int, help="Receipt ID")
-    p_show_receipt.set_defaults(func=handle_show_receipt)
-
-    p_balance = subparsers.add_parser("balance", help="Show net financial position from receipts")
-    p_balance.add_argument("--event-id", type=int, help="Optional event ID to filter balance")
-    p_balance.set_defaults(func=handle_balance)
+    # Cashflow (Sans Finance SSOT)
+    p_cashflow = subparsers.add_parser("cashflow", help="Display monthly cashflow aggregates from Sans Finance SSOT")
+    p_cashflow.add_argument("--limit", type=int, default=12, help="Number of months to show")
+    p_cashflow.set_defaults(func=handle_cashflow)
 
     # media & sync
     p_ingest_media = subparsers.add_parser("ingest-media", help="Ingest normalized media records from JSON")

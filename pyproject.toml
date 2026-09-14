@@ -27,3 +27,8 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 testpaths = ["ierp/tests"]
 python_files = ["test_*.py"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]

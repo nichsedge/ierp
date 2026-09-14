@@ -1,417 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Personal Journal & CRM ERP</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-:root {
-  --bg-primary: #090d16;
-  --bg-card: rgba(18, 24, 38, 0.75);
-  --bg-card-hover: rgba(28, 36, 56, 0.9);
-  --accent-cyan: #00f2fe;
-  --accent-blue: #4facfe;
-  --accent-purple: #8a2be2;
-  --accent-pink: #f43f5e;
-  --accent-green: #10b981;
-  --accent-amber: #f59e0b;
-  --text-main: #f3f4f6;
-  --text-muted: #9ca3af;
-  --card-border: rgba(255, 255, 255, 0.08);
-  --glow-shadow: 0 8px 32px 0 rgba(0, 242, 254, 0.08);
-}
-
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: 'Outfit', sans-serif;
-  background-color: var(--bg-primary);
-  background-image: 
-    radial-gradient(at 0% 0%, rgba(79, 172, 254, 0.12) 0px, transparent 50%),
-    radial-gradient(at 100% 100%, rgba(138, 43, 226, 0.12) 0px, transparent 50%);
-  background-attachment: fixed;
-  color: var(--text-main);
-  min-height: 100vh;
-  padding: 24px 20px;
-}
-
-.container { max-width: 1320px; margin: 0 auto; }
-
-header {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 24px; padding-bottom: 18px;
-  border-bottom: 1px solid var(--card-border);
-  flex-wrap: wrap; gap: 16px;
-}
-
-.logo-group { display: flex; align-items: center; gap: 14px; }
-.logo-icon {
-  width: 44px; height: 44px; border-radius: 12px;
-  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
-  display: flex; align-items: center; justify-content: center;
-  font-size: 22px; font-weight: 700; color: #fff;
-  box-shadow: 0 4px 15px rgba(79, 172, 254, 0.4);
-}
-h1 { font-size: 23px; font-weight: 700; letter-spacing: -0.5px; }
-
-.status-badge {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 6px 14px; border-radius: 20px;
-  background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3);
-  color: var(--accent-green); font-size: 13px; font-weight: 500;
-}
-.pulse {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--accent-green);
-  box-shadow: 0 0 8px var(--accent-green);
-  animation: pulse 2s infinite;
-}
-@keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
-
-.nav-tabs { display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
-.tab-btn {
-  padding: 9px 16px; border-radius: 12px; border: 1px solid var(--card-border);
-  background: var(--bg-card); color: var(--text-muted); font-size: 13.5px; font-weight: 600;
-  cursor: pointer; transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 6px;
-}
-.tab-btn:hover { background: var(--bg-card-hover); color: var(--text-main); }
-.tab-btn.active {
-  background: linear-gradient(135deg, rgba(79, 172, 254, 0.2), rgba(138, 43, 226, 0.2));
-  border-color: var(--accent-blue); color: var(--accent-cyan);
-}
-
-.stats-grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px; margin-bottom: 25px;
-}
-.stat-card {
-  background: var(--bg-card); border: 1px solid var(--card-border);
-  border-radius: 16px; padding: 20px; backdrop-filter: blur(12px);
-  position: relative; overflow: hidden;
-}
-.stat-card::before {
-  content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 3px;
-  background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
-}
-.stat-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; font-weight: 600; margin-bottom: 6px; }
-.stat-value { font-size: 30px; font-weight: 700; color: #fff; }
-.stat-icon { position: absolute; right: 20px; top: 20px; font-size: 26px; opacity: 0.35; }
-
-.charts-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 30px; }
-@media (max-width: 900px) { .charts-grid { grid-template-columns: 1fr; } }
-
-.panel {
-  background: var(--bg-card); border: 1px solid var(--card-border);
-  border-radius: 18px; padding: 24px; backdrop-filter: blur(12px);
-}
-.panel-title { font-size: 16px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
-
-.bar-chart { display: flex; align-items: flex-end; gap: 10px; height: 180px; padding-top: 20px; }
-.chart-bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; height: 100%; }
-.bar-wrapper { width: 100%; height: 100%; display: flex; align-items: flex-end; justify-content: center; }
-.bar-fill {
-  width: 70%; max-width: 24px; border-radius: 6px 6px 0 0;
-  background: linear-gradient(180deg, var(--accent-cyan), var(--accent-blue));
-  transition: height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-}
-.bar-fill:hover::after {
-  content: attr(data-count);
-  position: absolute; top: -25px; left: 50%; transform: translateX(-50%);
-  background: rgba(0,0,0,0.85); padding: 2px 6px; border-radius: 4px; font-size: 11px; color: #fff;
-  white-space: nowrap;
-}
-.bar-label { font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
-
-.tag-cloud { display: flex; flex-wrap: wrap; gap: 8px; }
-.tag-pill {
-  padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 500;
-  background: rgba(255, 255, 255, 0.05); border: 1px solid var(--card-border);
-  color: var(--text-main); cursor: pointer; transition: all 0.2s;
-  display: flex; align-items: center; gap: 6px; user-select: none;
-}
-.tag-pill:hover, .tag-pill.active { background: var(--accent-blue); color: #fff; border-color: var(--accent-blue); }
-.tag-count { font-size: 10px; background: rgba(0, 0, 0, 0.35); padding: 1px 6px; border-radius: 10px; }
-
-/* Heatmap & Visualizations */
-.heatmap-card { margin-bottom: 25px; overflow: hidden; }
-.heatmap-scroll { overflow-x: auto; padding: 10px 0; }
-.heatmap-wrapper { display: inline-flex; flex-direction: column; gap: 6px; min-width: 780px; }
-.heatmap-months { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; padding-left: 28px; }
-.heatmap-body { display: flex; gap: 8px; align-items: flex-start; }
-.heatmap-days { display: grid; grid-template-rows: repeat(7, 13px); gap: 4px; font-size: 9.5px; color: var(--text-muted); line-height: 13px; font-family: 'JetBrains Mono', monospace; }
-.heatmap-grid {
-  display: grid;
-  grid-template-rows: repeat(7, 13px);
-  grid-auto-flow: column;
-  grid-auto-columns: 13px;
-  gap: 4px;
-}
-.heatmap-cell {
-  width: 13px; height: 13px; border-radius: 3px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  cursor: pointer; transition: all 0.15s ease;
-  position: relative;
-}
-.heatmap-cell:hover {
-  transform: scale(1.4); z-index: 10;
-  border-color: #fff; box-shadow: 0 0 8px rgba(0, 242, 254, 0.5);
-}
-.heatmap-cell[data-level="1"] { background: rgba(0, 242, 254, 0.25); border-color: rgba(0, 242, 254, 0.4); }
-.heatmap-cell[data-level="2"] { background: rgba(79, 172, 254, 0.5); border-color: rgba(79, 172, 254, 0.7); }
-.heatmap-cell[data-level="3"] { background: rgba(138, 43, 226, 0.75); border-color: rgba(138, 43, 226, 0.9); }
-.heatmap-cell[data-level="4"] { background: #00f2fe; border-color: #fff; box-shadow: 0 0 8px #00f2fe; }
-
-.heatmap-footer {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-top: 10px; font-size: 11.5px; color: var(--text-muted);
-}
-.heatmap-legend { display: flex; align-items: center; gap: 4px; }
-.heatmap-legend-cell { width: 11px; height: 11px; border-radius: 2px; }
-
-/* Cashflow Grouped Chart */
-.cashflow-chart { display: flex; align-items: flex-end; gap: 14px; height: 180px; padding-top: 20px; }
-.cf-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; height: 100%; }
-.cf-bars-wrap { width: 100%; height: 100%; display: flex; align-items: flex-end; justify-content: center; gap: 4px; }
-.cf-bar { width: 10px; border-radius: 4px 4px 0 0; transition: height 0.4s ease; position: relative; }
-.cf-bar.income { background: linear-gradient(180deg, var(--accent-green), #059669); }
-.cf-bar.cost { background: linear-gradient(180deg, var(--accent-pink), #e11d48); }
-.cf-bar.expected { background: linear-gradient(180deg, var(--accent-amber), #d97706); }
-.cf-bar:hover::after {
-  content: attr(data-tooltip);
-  position: absolute; top: -25px; left: 50%; transform: translateX(-50%);
-  background: rgba(0,0,0,0.9); padding: 2px 6px; border-radius: 4px; font-size: 11px; color: #fff;
-  white-space: nowrap; z-index: 20;
-}
-
-/* Media Summary Badges */
-.media-summary-grid { display: flex; flex-wrap: wrap; gap: 10px; }
-.media-badge-pill {
-  padding: 8px 14px; border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04); border: 1px solid var(--card-border);
-  display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s;
-}
-.media-badge-pill:hover {
-  background: var(--bg-card-hover); border-color: var(--accent-purple);
-  transform: translateY(-2px);
-}
-.media-badge-count { font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--accent-cyan); }
-
-/* Filter & Controls Toolbar */
-.toolbar-section {
-  background: var(--bg-card); border: 1px solid var(--card-border);
-  border-radius: 16px; padding: 16px 20px; margin-bottom: 20px;
-  display: flex; flex-direction: column; gap: 14px;
-}
-.filter-row {
-  display: flex; align-items: center; justify-content: space-between;
-  flex-wrap: wrap; gap: 12px;
-}
-.filter-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.search-input-wrap { flex: 1; min-width: 260px; position: relative; }
-.search-input {
-  width: 100%; padding: 10px 16px; border-radius: 10px;
-  background: rgba(0, 0, 0, 0.35); border: 1px solid var(--card-border);
-  color: #fff; font-size: 14px; outline: none; transition: all 0.2s;
-}
-.search-input:focus { border-color: var(--accent-blue); box-shadow: 0 0 12px rgba(79, 172, 254, 0.2); }
-
-.date-input {
-  background: rgba(0, 0, 0, 0.35); border: 1px solid var(--card-border);
-  color: var(--text-main); padding: 8px 12px; border-radius: 10px;
-  font-size: 13px; font-family: 'JetBrains Mono', monospace; outline: none;
-}
-.date-input:focus { border-color: var(--accent-blue); }
-
-.control-select {
-  background: rgba(0, 0, 0, 0.35); border: 1px solid var(--card-border);
-  color: var(--text-main); padding: 8px 12px; border-radius: 10px;
-  font-size: 13px; outline: none; cursor: pointer;
-}
-.control-select option { background: #111827; color: #fff; }
-
-.count-badge {
-  font-size: 12.5px; font-family: 'JetBrains Mono', monospace;
-  color: var(--accent-cyan); background: rgba(0, 242, 254, 0.08);
-  border: 1px solid rgba(0, 242, 254, 0.25); padding: 4px 10px; border-radius: 12px;
-}
-
-.sort-bar {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  font-size: 12.5px; color: var(--text-muted);
-}
-.sort-btn {
-  background: rgba(255, 255, 255, 0.04); border: 1px solid var(--card-border);
-  color: var(--text-muted); padding: 5px 10px; border-radius: 8px;
-  font-size: 12px; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 4px;
-}
-.sort-btn:hover { background: rgba(255, 255, 255, 0.08); color: var(--text-main); }
-.sort-btn.active {
-  background: rgba(79, 172, 254, 0.15); border-color: var(--accent-blue);
-  color: var(--accent-cyan); font-weight: 600;
-}
-
-/* Grids & Cards */
-.events-grid { display: flex; flex-direction: column; gap: 12px; }
-.event-card {
-  background: var(--bg-card); border: 1px solid var(--card-border);
-  border-radius: 14px; padding: 18px 22px; cursor: pointer;
-  transition: all 0.2s ease;
-}
-.event-card:hover {
-  background: var(--bg-card-hover); border-color: rgba(255, 255, 255, 0.2);
-  transform: translateY(-2px);
-}
-.event-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
-.event-title { font-size: 16.5px; font-weight: 600; color: #fff; }
-.event-date { font-size: 12.5px; color: var(--accent-cyan); font-family: 'JetBrains Mono', monospace; }
-.event-meta { display: flex; gap: 15px; font-size: 13px; color: var(--text-muted); margin-bottom: 8px; flex-wrap: wrap; }
-.meta-item { display: flex; align-items: center; gap: 5px; }
-.event-notes-preview { font-size: 13.5px; color: var(--text-muted); line-height: 1.5; white-space: pre-wrap; max-height: 4.5em; overflow: hidden; }
-
-.contacts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
-.contact-card {
-  background: var(--bg-card); border: 1px solid var(--card-border);
-  border-radius: 14px; padding: 18px; transition: transform 0.2s, border-color 0.2s;
-}
-.contact-card:hover { transform: translateY(-2px); border-color: rgba(255, 255, 255, 0.2); }
-.contact-name { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
-.contact-org { font-size: 13px; color: var(--accent-purple); margin-bottom: 8px; }
-.contact-badge {
-  display: inline-block; background: rgba(79, 172, 254, 0.1);
-  color: var(--accent-blue); padding: 4px 10px; border-radius: 12px;
-  font-size: 12px; font-weight: 500;
-}
-
-/* Media Cards */
-.media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
-.media-card {
-  background: var(--bg-card); border: 1px solid var(--card-border);
-  border-radius: 14px; padding: 18px; transition: transform 0.2s, border-color 0.2s;
-  display: flex; flex-direction: column; justify-content: space-between; gap: 12px;
-}
-.media-card:hover { transform: translateY(-2px); border-color: rgba(255, 255, 255, 0.2); }
-.media-title { font-size: 15.5px; font-weight: 600; color: #fff; line-height: 1.35; }
-.media-type-badge {
-  font-size: 11px; font-weight: 600; text-transform: uppercase;
-  padding: 3px 8px; border-radius: 8px; background: rgba(138, 43, 226, 0.15);
-  color: var(--accent-purple); border: 1px solid rgba(138, 43, 226, 0.3);
-}
-.media-rating {
-  color: var(--accent-amber); font-weight: 600; font-size: 13px;
-  display: inline-flex; align-items: center; gap: 4px;
-}
-
-/* Vendors Cards */
-.vendors-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
-.vendor-card {
-  background: var(--bg-card); border: 1px solid var(--card-border);
-  border-radius: 14px; padding: 18px; transition: all 0.2s; position: relative;
-}
-.vendor-card:hover { transform: translateY(-2px); border-color: rgba(255, 255, 255, 0.2); }
-.vendor-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
-.vendor-name { font-size: 16.5px; font-weight: 600; color: #fff; }
-.fav-btn {
-  background: none; border: none; font-size: 20px; cursor: pointer;
-  color: rgba(255, 255, 255, 0.2); transition: transform 0.15s, color 0.15s; padding: 0 4px;
-}
-.fav-btn:hover { transform: scale(1.25); }
-.fav-btn.is-fav { color: var(--accent-amber); text-shadow: 0 0 10px rgba(245, 158, 11, 0.5); }
-
-/* Links Cards */
-.links-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
-.link-card {
-  background: var(--bg-card); border: 1px solid var(--card-border);
-  border-radius: 14px; padding: 16px; transition: all 0.2s;
-  display: flex; flex-direction: column; justify-content: space-between; gap: 10px;
-}
-.link-card:hover { transform: translateY(-2px); border-color: rgba(255, 255, 255, 0.2); }
-.link-url {
-  font-size: 12.5px; color: var(--accent-blue); word-break: break-all;
-  text-decoration: none; display: inline-flex; align-items: center; gap: 4px;
-}
-.link-url:hover { text-decoration: underline; color: var(--accent-cyan); }
-
-/* Commerce / Subtabs */
-.commerce-subtabs { display: flex; gap: 8px; margin-bottom: 16px; }
-.subtab-btn {
-  padding: 7px 14px; border-radius: 10px; border: 1px solid var(--card-border);
-  background: rgba(255, 255, 255, 0.04); color: var(--text-muted); font-size: 13px;
-  font-weight: 600; cursor: pointer; transition: all 0.2s;
-}
-.subtab-btn.active {
-  background: rgba(79, 172, 254, 0.15); border-color: var(--accent-blue); color: var(--accent-cyan);
-}
-.commerce-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
-.commerce-card {
-  background: var(--bg-card); border: 1px solid var(--card-border);
-  border-radius: 14px; padding: 18px; transition: all 0.2s;
-}
-.commerce-card:hover { transform: translateY(-2px); border-color: rgba(255, 255, 255, 0.2); }
-.copy-box {
-  background: rgba(0, 0, 0, 0.35); border: 1px solid var(--card-border);
-  border-radius: 8px; padding: 6px 10px; font-family: 'JetBrains Mono', monospace;
-  font-size: 12.5px; color: var(--accent-cyan); display: flex; justify-content: space-between;
-  align-items: center; margin: 8px 0;
-}
-.copy-btn {
-  background: rgba(255, 255, 255, 0.08); border: 1px solid var(--card-border);
-  color: var(--text-main); font-size: 11px; padding: 2px 8px; border-radius: 6px;
-  cursor: pointer; transition: all 0.15s;
-}
-.copy-btn:hover { background: var(--accent-blue); color: #fff; }
-.copy-btn.copied { background: var(--accent-green); color: #fff; }
-
-/* Scroll & Loading States */
-.scroll-sentinel { width: 100%; height: 20px; margin-top: 10px; }
-.load-more-wrap { display: flex; justify-content: center; padding: 20px 0; }
-.load-more-btn {
-  padding: 10px 24px; border-radius: 12px; border: 1px solid var(--card-border);
-  background: var(--bg-card); color: var(--accent-cyan); font-weight: 600; font-size: 14px;
-  cursor: pointer; transition: all 0.2s;
-}
-.load-more-btn:hover { background: var(--bg-card-hover); border-color: var(--accent-blue); }
-.loading-indicator {
-  text-align: center; padding: 20px; color: var(--text-muted); font-size: 13.5px;
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-}
-.end-indicator { text-align: center; padding: 25px 0; color: var(--text-muted); font-size: 12.5px; font-style: italic; }
-
-/* Modal */
-.modal-overlay {
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(8px);
-  display: none; align-items: center; justify-content: center;
-  padding: 20px; z-index: 1000;
-}
-.modal-content {
-  background: #111827; border: 1px solid var(--card-border);
-  border-radius: 20px; max-width: 650px; width: 100%;
-  max-height: 85vh; overflow-y: auto; padding: 28px;
-  position: relative; color: var(--text-main);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
-}
-.close-btn {
-  position: absolute; top: 20px; right: 20px;
-  background: rgba(255, 255, 255, 0.1); border: none; color: #fff;
-  width: 32px; height: 32px; border-radius: 50%; cursor: pointer;
-  font-size: 18px; display: flex; align-items: center; justify-content: center;
-}
-.close-btn:hover { background: rgba(255, 255, 255, 0.2); }
-.modal-body { margin-top: 18px; font-size: 14.5px; line-height: 1.6; white-space: pre-wrap; }
-.media-img { max-width: 100%; border-radius: 12px; margin-top: 15px; border: 1px solid var(--card-border); }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iERP — Personal Journal & CRM ERP</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/dashboard.css">
+  <script src="/static/vendor/petite-vue.iife.js"></script>
+  <script src="/static/js/app.js"></script>
 </head>
 <body>
-<div class="container">
+<div class="container" id="app" v-scope v-cloak>
   <header>
     <div class="logo-group">
       <div class="logo-icon">E</div>
       <div>
-        <h1>Journal & CRM Dashboard</h1>
+        <h1>Journal & CRM ERP</h1>
         <p style="font-size: 13px; color: var(--text-muted); margin-top: 2px;">Personal Event Log & Knowledge ERP System</p>
       </div>
     </div>
@@ -421,63 +27,63 @@ h1 { font-size: 23px; font-weight: 700; letter-spacing: -0.5px; }
     </div>
   </header>
 
+  <!-- NAVIGATION TABS -->
   <div class="nav-tabs">
-    <button class="tab-btn active" onclick="switchTab('overview', event)">📊 Overview</button>
-    <button class="tab-btn" onclick="switchTab('events', event)">📅 Timeline Events</button>
-    <button class="tab-btn" onclick="switchTab('contacts', event)">👥 CRM Contacts</button>
-    <button class="tab-btn" onclick="switchTab('projects', event)">🚀 Projects</button>
-    <button class="tab-btn" onclick="switchTab('decisions', event)">⚖️ Decisions</button>
-    <button class="tab-btn" onclick="switchTab('radar', event)">📡 Radar</button>
-    <button class="tab-btn" onclick="switchTab('lifeops', event)">🧭 Life Ops</button>
-    <button class="tab-btn" onclick="switchTab('media', event)">🎬 Media Logs</button>
-    <button class="tab-btn" onclick="switchTab('vendors', event)">⭐ Vendors</button>
-    <button class="tab-btn" onclick="switchTab('links', event)">🔗 Links</button>
-    <button class="tab-btn" onclick="switchTab('commerce', event)">💳 Commerce</button>
-    <button class="tab-btn" onclick="switchTab('receipts', event)">💰 Receipts</button>
+    <button :class="['tab-btn', { active: activeTab === 'overview' }]" @click="switchTab('overview')">📊 Overview</button>
+    <button :class="['tab-btn', { active: activeTab === 'events' }]" @click="switchTab('events')">📅 Timeline Events</button>
+    <button :class="['tab-btn', { active: activeTab === 'contacts' }]" @click="switchTab('contacts')">👥 CRM Contacts</button>
+    <button :class="['tab-btn', { active: activeTab === 'projects' }]" @click="switchTab('projects')">🚀 Projects</button>
+    <button :class="['tab-btn', { active: activeTab === 'decisions' }]" @click="switchTab('decisions')">⚖️ Decisions</button>
+    <button :class="['tab-btn', { active: activeTab === 'radar' }]" @click="switchTab('radar')">📡 Radar</button>
+    <button :class="['tab-btn', { active: activeTab === 'lifeops' }]" @click="switchTab('lifeops')">🧭 Life Ops</button>
+    <button :class="['tab-btn', { active: activeTab === 'media' }]" @click="switchTab('media')">🎬 Media Logs</button>
+    <button :class="['tab-btn', { active: activeTab === 'vendors' }]" @click="switchTab('vendors')">⭐ Vendors</button>
+    <button :class="['tab-btn', { active: activeTab === 'links' }]" @click="switchTab('links')">🔗 Links</button>
+    <button :class="['tab-btn', { active: activeTab === 'commerce' }]" @click="switchTab('commerce')">💳 Commerce</button>
   </div>
 
   <!-- OVERVIEW TAB -->
-  <div id="tab-overview">
+  <div id="tab-overview" v-if="activeTab === 'overview'">
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-label">Total Events</div>
-        <div class="stat-value" id="stat-events">-</div>
+        <div class="stat-value">{{ stats.total_events || '-' }}</div>
         <div class="stat-icon">📅</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Registered Contacts</div>
-        <div class="stat-value" id="stat-contacts">-</div>
+        <div class="stat-label">Total Contacts</div>
+        <div class="stat-value">{{ stats.total_contacts || '-' }}</div>
         <div class="stat-icon">👥</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Linked Interactions</div>
-        <div class="stat-value" id="stat-links">-</div>
+        <div class="stat-label">Resource Links</div>
+        <div class="stat-value">{{ stats.total_links || '-' }}</div>
         <div class="stat-icon">🔗</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Media Files</div>
-        <div class="stat-value" id="stat-media">-</div>
+        <div class="stat-label">Media Logged</div>
+        <div class="stat-value">{{ stats.total_media || '-' }}</div>
         <div class="stat-icon">🖼️</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Sovereignty Runway</div>
-        <div class="stat-value" id="stat-runway" style="color: var(--accent-cyan); font-size: 26px;">-</div>
+        <div class="stat-value" style="color: var(--accent-cyan); font-size: 26px;">{{ stats.runway }}</div>
         <div class="stat-icon">🛡️</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Radar Overdue</div>
-        <div class="stat-value" id="stat-radar" style="color: var(--accent-amber); font-size: 26px;">-</div>
+        <div class="stat-value" style="color: var(--accent-amber); font-size: 26px;">{{ stats.radar_overdue }}</div>
         <div class="stat-icon">📡</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Net Cash</div>
-        <div class="stat-value" id="stat-netcash">-</div>
-        <div class="stat-icon">💵</div>
+        <div class="stat-label">Liquid Capital</div>
+        <div class="stat-value">{{ stats.net_cash }}</div>
+        <div class="stat-icon">💧</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Net Position</div>
-        <div class="stat-value" id="stat-netpos">-</div>
-        <div class="stat-icon">💰</div>
+        <div class="stat-label">Net Worth</div>
+        <div class="stat-value">{{ stats.net_pos }}</div>
+        <div class="stat-icon">💎</div>
       </div>
     </div>
 
@@ -485,11 +91,13 @@ h1 { font-size: 23px; font-weight: 700; letter-spacing: -0.5px; }
     <div class="panel heatmap-card">
       <div class="panel-title">
         <span>🔥 Journal Activity Heatmap (Last 365 Days)</span>
-        <span id="heatmap-total-label" style="font-size:12px; color:var(--accent-cyan); font-family:'JetBrains Mono', monospace;"></span>
+        <span style="font-size:12px; color:var(--accent-cyan); font-family:'JetBrains Mono', monospace;">{{ heatmapTotalLabel }}</span>
       </div>
       <div class="heatmap-scroll">
         <div class="heatmap-wrapper">
-          <div class="heatmap-months" id="heatmap-months"></div>
+          <div class="heatmap-months">
+            <span v-for="m in heatmapMonths">{{ m.month }}</span>
+          </div>
           <div class="heatmap-body">
             <div class="heatmap-days">
               <span>Mon</span>
@@ -500,7 +108,13 @@ h1 { font-size: 23px; font-weight: 700; letter-spacing: -0.5px; }
               <span></span>
               <span>Sun</span>
             </div>
-            <div class="heatmap-grid" id="heatmap-grid"></div>
+            <div class="heatmap-grid">
+              <div v-for="cell in heatmapCells" 
+                   class="heatmap-cell" 
+                   :data-level="cell.level" 
+                   :title="cell.title" 
+                   @click="filterByDate(cell.date)"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -522,14 +136,32 @@ h1 { font-size: 23px; font-weight: 700; letter-spacing: -0.5px; }
     <div class="charts-grid">
       <div class="panel">
         <div class="panel-title">Monthly Event Activity</div>
-        <div class="bar-chart" id="monthly-chart"></div>
+        <div class="bar-chart" id="monthly-chart">
+          <div v-for="m in monthlyCountsChart" class="chart-bar-col">
+            <div class="bar-wrapper">
+              <div class="bar-fill" :style="{ height: m.heightPct + '%' }" :data-count="m.count"></div>
+            </div>
+            <div class="bar-label">{{ m.year_month }}</div>
+          </div>
+          <div v-if="monthlyCountsChart.length === 0" style="color:var(--text-muted); font-size:13px; margin:auto;">No monthly events logged yet.</div>
+        </div>
       </div>
       <div class="panel">
         <div class="panel-title">
-          <span>Monthly Cashflow Ledger</span>
-          <span style="font-size:11px; color:var(--text-muted);">Income (Green) / Cost (Red) / Exp (Amber)</span>
+          <span>Monthly Cashflow (Sans Finance SSOT)</span>
+          <span style="font-size:11px; color:var(--text-muted);">Income (Green) / Cost (Red) / Exp (Purple)</span>
         </div>
-        <div class="cashflow-chart" id="cashflow-chart"></div>
+        <div class="cashflow-chart" id="cashflow-chart">
+          <div v-for="c in cashflowChartData" class="cf-col">
+            <div class="cf-bars-wrap">
+              <div class="cf-bar income" :style="{ height: c.incPct + '%' }" :data-tooltip="'Income: Rp' + (c.income || 0).toLocaleString('id-ID')"></div>
+              <div class="cf-bar cost" :style="{ height: c.costPct + '%' }" :data-tooltip="'Cost: Rp' + (c.cost || 0).toLocaleString('id-ID')"></div>
+              <div class="cf-bar expected" :style="{ height: c.expPct + '%' }" :data-tooltip="'Expected: Rp' + (c.expected || 0).toLocaleString('id-ID')"></div>
+            </div>
+            <div class="bar-label">{{ c.year_month }}</div>
+          </div>
+          <div v-if="cashflowChartData.length === 0" style="color:var(--text-muted); font-size:13px; margin:auto;">No cashflow records found in Sans Finance snapshot.</div>
+        </div>
       </div>
     </div>
 
@@ -537,1720 +169,763 @@ h1 { font-size: 23px; font-weight: 700; letter-spacing: -0.5px; }
     <div class="charts-grid">
       <div class="panel">
         <div class="panel-title">🎬 Media Tracker Collection</div>
-        <div class="media-summary-grid" id="media-summary-badges"></div>
+        <div class="media-summary-grid">
+          <div v-for="(cnt, typeKey) in stats.media_summary" 
+               class="media-badge-pill" 
+               @click="filterByMediaType(typeKey)">
+            <span>{{ getMediaIcon(typeKey) }}</span>
+            <span class="media-badge-count">{{ cnt }}</span>
+          </div>
+          <div v-if="Object.keys(stats.media_summary).length === 0" style="color:var(--text-muted); font-size:13px;">No media logged yet. Run <code>ierp sync</code> to import.</div>
+        </div>
       </div>
       <div class="panel">
         <div class="panel-title">📍 Top Visited Venues & Locations</div>
-        <div class="tag-cloud" id="top-places"></div>
+        <div class="tag-cloud">
+          <div v-for="[place, count] in stats.top_places" class="tag-pill" @click="filterByPlace(place)">
+            📍 {{ place }} <span class="tag-count">{{ count }}</span>
+          </div>
+          <span v-if="stats.top_places.length === 0" style="color:var(--text-muted); font-size:13px;">No location venues logged yet.</span>
+        </div>
       </div>
     </div>
 
     <!-- CHARTS ROW 3 -->
     <div class="panel" style="margin-bottom: 25px;">
       <div class="panel-title">🏷️ Top Categories / Tags</div>
-      <div class="tag-cloud" id="top-tags"></div>
+      <div class="tag-cloud">
+        <div v-for="[tag, count] in stats.top_tags" class="tag-pill" @click="filterByTag(tag)">
+          #{{ tag }} <span class="tag-count">{{ count }}</span>
+        </div>
+        <span v-if="stats.top_tags.length === 0" style="color:var(--text-muted); font-size:13px;">No tags recorded yet.</span>
+      </div>
     </div>
   </div>
 
   <!-- TIMELINE EVENTS TAB -->
-  <div id="tab-events" style="display:none;">
+  <div id="tab-events" v-if="activeTab === 'events'">
     <div class="toolbar-section">
       <div class="filter-row">
         <div class="search-input-wrap">
-          <input type="text" id="event-search" class="search-input" placeholder="Search events by title, place, notes..." oninput="debounceTrigger('events')">
+          <input type="text" 
+                 v-model="collections.events.search" 
+                 class="search-input" 
+                 placeholder="Search events by title, place, notes..." 
+                 @input="onSearchInput('events')">
         </div>
         <div class="filter-group">
           <label style="font-size:12.5px; color:var(--text-muted);">From:</label>
-          <input type="date" id="event-from" class="date-input" onchange="resetAndFetch('events')">
+          <input type="date" v-model="collections.events.from_date" class="date-input" @change="onEventDateChange">
           <label style="font-size:12.5px; color:var(--text-muted);">To:</label>
-          <input type="date" id="event-to" class="date-input" onchange="resetAndFetch('events')">
-          <button class="sort-btn" onclick="clearEventFilters()">Clear</button>
+          <input type="date" v-model="collections.events.to_date" class="date-input" @change="onEventDateChange">
+          <button class="sort-btn" v-if="hasActiveEventFilters()" @click="clearEventFilters">Clear Filters</button>
         </div>
       </div>
       <div class="filter-row">
-        <div class="sort-bar" id="events-sort-bar">
+        <div class="sort-bar">
           <span>Sort by:</span>
-          <button class="sort-btn active" data-col="start_date" onclick="setSort('events', 'start_date')">Date <span class="sort-dir">▼</span></button>
-          <button class="sort-btn" data-col="title" onclick="setSort('events', 'title')">Title <span class="sort-dir"></span></button>
-          <button class="sort-btn" data-col="place" onclick="setSort('events', 'place')">Place <span class="sort-dir"></span></button>
-          <button class="sort-btn" data-col="created_at" onclick="setSort('events', 'created_at')">Created <span class="sort-dir"></span></button>
+          <button :class="['sort-btn', { active: collections.events.sort === 'start_date' }]" @click="setSort('events', 'start_date')">
+            Date <span class="sort-dir">{{ collections.events.sort === 'start_date' ? (collections.events.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+          <button :class="['sort-btn', { active: collections.events.sort === 'title' }]" @click="setSort('events', 'title')">
+            Title <span class="sort-dir">{{ collections.events.sort === 'title' ? (collections.events.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+          <button :class="['sort-btn', { active: collections.events.sort === 'place' }]" @click="setSort('events', 'place')">
+            Place <span class="sort-dir">{{ collections.events.sort === 'place' ? (collections.events.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+          <button :class="['sort-btn', { active: collections.events.sort === 'created_at' }]" @click="setSort('events', 'created_at')">
+            Created <span class="sort-dir">{{ collections.events.sort === 'created_at' ? (collections.events.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
         </div>
         <div class="filter-group">
-          <span class="count-badge" id="events-count">Loading...</span>
-          <select id="events-limit" class="control-select" onchange="changeLimit('events')">
+          <span class="count-badge">Showing {{ collections.events.items.length }} of {{ collections.events.total }}</span>
+          <select class="control-select" :value="collections.events.limit" @change="changeLimit('events', $event)">
             <option value="10">10 / page</option>
-            <option value="25" selected>25 / page</option>
+            <option value="25">25 / page</option>
             <option value="50">50 / page</option>
             <option value="100">100 / page</option>
           </select>
         </div>
       </div>
     </div>
-    <div class="events-grid" id="events-list"></div>
+
+    <div class="events-grid">
+      <div v-for="ev in collections.events.items" :key="ev.id" class="event-card" @click="showEventModal(ev.id)">
+        <div class="event-header">
+          <div class="event-title">{{ ev.title }}</div>
+          <div class="event-date">{{ ev.start_date || ev.raw_date || 'No Date' }}</div>
+        </div>
+        <div class="event-meta">
+          <div v-if="ev.place" class="meta-item">📍 {{ ev.place }}</div>
+          <div v-if="ev.linked_contacts && ev.linked_contacts.length > 0" class="meta-item" style="color:var(--accent-purple);">
+            <span v-for="(c, idx) in ev.linked_contacts">👤 {{ c.name }}<span v-if="idx < ev.linked_contacts.length - 1">, </span></span>
+          </div>
+        </div>
+        <div v-if="ev.tags && ev.tags.length > 0" style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;">
+          <span v-for="t in ev.tags" class="tag-pill" style="font-size:11px; padding:3px 8px;">#{{ t }}</span>
+        </div>
+        <div class="event-notes-preview">{{ ev.notes || '' }}</div>
+      </div>
+      <div v-if="collections.events.items.length === 0 && !collections.events.loading" style="color:var(--text-muted); text-align:center; padding:40px; grid-column: 1 / -1;">
+        No events found matching current criteria.
+      </div>
+    </div>
+
     <div id="events-sentinel" class="scroll-sentinel"></div>
-    <div id="events-footer" class="load-more-wrap"></div>
+    <div class="load-more-wrap">
+      <button v-if="collections.events.hasMore" class="load-more-btn" :disabled="collections.events.loading" @click="fetchMore('events')">
+        {{ collections.events.loading ? '⏳ Loading more events...' : `Load More (${collections.events.total - collections.events.items.length} remaining)` }}
+      </button>
+      <div v-else-if="collections.events.total > 0" class="end-indicator">✓ All {{ collections.events.total }} events loaded</div>
+    </div>
   </div>
 
   <!-- CRM CONTACTS TAB -->
-  <div id="tab-contacts" style="display:none;">
+  <div id="tab-contacts" v-if="activeTab === 'contacts'">
     <div class="toolbar-section">
       <div class="filter-row">
-        <div class="filter-group" id="contact-source-filters">
-          <button class="tag-pill active" onclick="filterContactsSource('', this)">All Contacts</button>
-          <button class="tag-pill" onclick="filterContactsSource('manual', this)">Manual (CRM)</button>
-          <button class="tag-pill" onclick="filterContactsSource('google', this)">Google Synced</button>
-          <button class="tag-pill" onclick="filterContactsSource('merged', this)">Merged</button>
+        <div class="filter-group">
+          <button :class="['tag-pill', { active: collections.contacts.source === '' }]" @click="filterContactsSource('')">All Contacts</button>
+          <button :class="['tag-pill', { active: collections.contacts.source === 'manual' }]" @click="filterContactsSource('manual')">Manual (CRM)</button>
+          <button :class="['tag-pill', { active: collections.contacts.source === 'google' }]" @click="filterContactsSource('google')">Google Synced</button>
+          <button :class="['tag-pill', { active: collections.contacts.source === 'merged' }]" @click="filterContactsSource('merged')">Merged</button>
         </div>
-        <button class="tag-pill" style="background: linear-gradient(135deg, var(--accent-purple), var(--accent-pink)); color:#fff; border:none; cursor:pointer; font-weight:600; padding:8px 16px;" onclick="triggerAutoMerge()">⚡ Auto-Merge Duplicates</button>
+        <button class="tag-pill" style="background: linear-gradient(135deg, var(--accent-purple), var(--accent-pink)); color:#fff; border:none; cursor:pointer; font-weight:600; padding:8px 16px;" @click="triggerAutoMerge">⚡ Auto-Merge Duplicates</button>
       </div>
       <div class="filter-row">
         <div class="search-input-wrap">
-          <input type="text" id="contact-search" class="search-input" placeholder="Search contacts by name, email, phone, org, client, notes..." oninput="debounceTrigger('contacts')">
+          <input type="text" 
+                 v-model="collections.contacts.search" 
+                 class="search-input" 
+                 placeholder="Search contacts by name, email, phone, org, client, notes..." 
+                 @input="onSearchInput('contacts')">
         </div>
       </div>
       <div class="filter-row">
-        <div class="sort-bar" id="contacts-sort-bar">
+        <div class="sort-bar">
           <span>Sort by:</span>
-          <button class="sort-btn active" data-col="event_count" onclick="setSort('contacts', 'event_count')">Linked Events <span class="sort-dir">▼</span></button>
-          <button class="sort-btn" data-col="name" onclick="setSort('contacts', 'name')">Name <span class="sort-dir"></span></button>
-          <button class="sort-btn" data-col="org" onclick="setSort('contacts', 'org')">Organization <span class="sort-dir"></span></button>
-          <button class="sort-btn" data-col="location" onclick="setSort('contacts', 'location')">Location <span class="sort-dir"></span></button>
-          <button class="sort-btn" data-col="source" onclick="setSort('contacts', 'source')">Source <span class="sort-dir"></span></button>
+          <button :class="['sort-btn', { active: collections.contacts.sort === 'event_count' }]" @click="setSort('contacts', 'event_count')">
+            Linked Events <span class="sort-dir">{{ collections.contacts.sort === 'event_count' ? (collections.contacts.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+          <button :class="['sort-btn', { active: collections.contacts.sort === 'name' }]" @click="setSort('contacts', 'name')">
+            Name <span class="sort-dir">{{ collections.contacts.sort === 'name' ? (collections.contacts.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+          <button :class="['sort-btn', { active: collections.contacts.sort === 'org' }]" @click="setSort('contacts', 'org')">
+            Organization <span class="sort-dir">{{ collections.contacts.sort === 'org' ? (collections.contacts.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+          <button :class="['sort-btn', { active: collections.contacts.sort === 'location' }]" @click="setSort('contacts', 'location')">
+            Location <span class="sort-dir">{{ collections.contacts.sort === 'location' ? (collections.contacts.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+          <button :class="['sort-btn', { active: collections.contacts.sort === 'source' }]" @click="setSort('contacts', 'source')">
+            Source <span class="sort-dir">{{ collections.contacts.sort === 'source' ? (collections.contacts.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
         </div>
         <div class="filter-group">
-          <span class="count-badge" id="contacts-count">Loading...</span>
-          <select id="contacts-limit" class="control-select" onchange="changeLimit('contacts')">
+          <span class="count-badge">Showing {{ collections.contacts.items.length }} of {{ collections.contacts.total }}</span>
+          <select class="control-select" :value="collections.contacts.limit" @change="changeLimit('contacts', $event)">
             <option value="12">12 / page</option>
-            <option value="24" selected>24 / page</option>
+            <option value="24">24 / page</option>
             <option value="48">48 / page</option>
             <option value="96">96 / page</option>
           </select>
         </div>
       </div>
     </div>
-    <div class="contacts-grid" id="contacts-list"></div>
-    <div id="contacts-sentinel" class="scroll-sentinel"></div>
-    <div id="contacts-footer" class="load-more-wrap"></div>
-  </div>
 
-  <!-- MEDIA CONSUMPTION TAB -->
-  <div id="tab-media" style="display:none;">
-    <div class="toolbar-section">
-      <div class="filter-row">
-        <div class="filter-group" id="media-type-filters">
-          <button class="tag-pill active" onclick="filterMediaType('', this)">All Media</button>
-          <button class="tag-pill" onclick="filterMediaType('book', this)">📚 Books</button>
-          <button class="tag-pill" onclick="filterMediaType('film', this)">🎬 Films</button>
-          <button class="tag-pill" onclick="filterMediaType('anime', this)">⛩️ Anime</button>
-          <button class="tag-pill" onclick="filterMediaType('manga', this)">📖 Manga</button>
-          <button class="tag-pill" onclick="filterMediaType('drama', this)">🎭 Dramas</button>
-        </div>
-      </div>
-      <div class="filter-row">
-        <div class="search-input-wrap">
-          <input type="text" id="media-search" class="search-input" placeholder="Search media by title, author, source, notes..." oninput="debounceTrigger('media')">
-        </div>
-      </div>
-      <div class="filter-row">
-        <div class="sort-bar" id="media-sort-bar">
-          <span>Sort by:</span>
-          <button class="sort-btn active" data-col="id" onclick="setSort('media', 'id')">Latest <span class="sort-dir">▼</span></button>
-          <button class="sort-btn" data-col="title" onclick="setSort('media', 'title')">Title <span class="sort-dir"></span></button>
-          <button class="sort-btn" data-col="rating" onclick="setSort('media', 'rating')">Rating <span class="sort-dir"></span></button>
-          <button class="sort-btn" data-col="date" onclick="setSort('media', 'date')">Date Logged <span class="sort-dir"></span></button>
-          <button class="sort-btn" data-col="media_type" onclick="setSort('media', 'media_type')">Type <span class="sort-dir"></span></button>
-        </div>
-        <div class="filter-group">
-          <span class="count-badge" id="media-count">Loading...</span>
-          <select id="media-limit" class="control-select" onchange="changeLimit('media')">
-            <option value="12">12 / page</option>
-            <option value="24" selected>24 / page</option>
-            <option value="48">48 / page</option>
-            <option value="96">96 / page</option>
-          </select>
-        </div>
-      </div>
-    </div>
-    <div class="media-grid" id="media-list"></div>
-    <div id="media-sentinel" class="scroll-sentinel"></div>
-    <div id="media-footer" class="load-more-wrap"></div>
-  </div>
-
-  <!-- VENDORS TAB -->
-  <div id="tab-vendors" style="display:none;">
-    <div class="toolbar-section">
-      <div class="filter-row">
-        <div class="filter-group">
-          <button class="tag-pill" id="vendor-fav-toggle" onclick="toggleVendorFavFilter(this)">★ Favorites Only</button>
-          <select id="vendor-category-filter" class="control-select" onchange="resetAndFetch('vendors')">
-            <option value="">All Categories</option>
-          </select>
-        </div>
-        <div class="search-input-wrap">
-          <input type="text" id="vendor-search" class="search-input" placeholder="Search vendors by name, category, location, notes, phone..." oninput="debounceTrigger('vendors')">
-        </div>
-      </div>
-      <div class="filter-row">
-        <div class="sort-bar" id="vendors-sort-bar">
-          <span>Sort by:</span>
-          <button class="sort-btn active" data-col="favorite" onclick="setSort('vendors', 'favorite')">Favorites First <span class="sort-dir">▼</span></button>
-          <button class="sort-btn" data-col="name" onclick="setSort('vendors', 'name')">Name <span class="sort-dir"></span></button>
-          <button class="sort-btn" data-col="category" onclick="setSort('vendors', 'category')">Category <span class="sort-dir"></span></button>
-          <button class="sort-btn" data-col="location" onclick="setSort('vendors', 'location')">Location <span class="sort-dir"></span></button>
-        </div>
-        <div class="filter-group">
-          <span class="count-badge" id="vendors-count">Loading...</span>
-          <select id="vendors-limit" class="control-select" onchange="changeLimit('vendors')">
-            <option value="12">12 / page</option>
-            <option value="24" selected>24 / page</option>
-            <option value="48">48 / page</option>
-          </select>
-        </div>
-      </div>
-    </div>
-    <div class="vendors-grid" id="vendors-list"></div>
-    <div id="vendors-sentinel" class="scroll-sentinel"></div>
-    <div id="vendors-footer" class="load-more-wrap"></div>
-  </div>
-
-  <!-- LINKS TAB -->
-  <div id="tab-links" style="display:none;">
-    <div class="toolbar-section">
-      <div class="filter-row">
-        <div class="filter-group" id="links-category-filters">
-          <button class="tag-pill active" onclick="filterLinksCategory('', this)">All Links</button>
-        </div>
-        <div class="search-input-wrap">
-          <input type="text" id="links-search" class="search-input" placeholder="Search links by label, URL, category, notes..." oninput="debounceTrigger('links')">
-        </div>
-      </div>
-      <div class="filter-row">
-        <div class="sort-bar" id="links-sort-bar">
-          <span>Sort by:</span>
-          <button class="sort-btn active" data-col="category" onclick="setSort('links', 'category')">Category <span class="sort-dir">▲</span></button>
-          <button class="sort-btn" data-col="label" onclick="setSort('links', 'label')">Label <span class="sort-dir"></span></button>
-          <button class="sort-btn" data-col="created_at" onclick="setSort('links', 'created_at')">Created <span class="sort-dir"></span></button>
-        </div>
-        <div class="filter-group">
-          <span class="count-badge" id="links-count">Loading...</span>
-          <select id="links-limit" class="control-select" onchange="changeLimit('links')">
-            <option value="12">12 / page</option>
-            <option value="24" selected>24 / page</option>
-            <option value="48">48 / page</option>
-          </select>
-        </div>
-      </div>
-    </div>
-    <div class="links-grid" id="links-list"></div>
-    <div id="links-sentinel" class="scroll-sentinel"></div>
-    <div id="links-footer" class="load-more-wrap"></div>
-  </div>
-
-  <!-- COMMERCE TAB (PAYMENT ACCOUNTS + REFERRALS) -->
-  <div id="tab-commerce" style="display:none;">
-    <div class="commerce-subtabs">
-      <button class="subtab-btn active" id="subtab-payments-btn" onclick="switchCommerceSubtab('payments')">💳 Payment Accounts</button>
-      <button class="subtab-btn" id="subtab-referrals-btn" onclick="switchCommerceSubtab('referrals')">🎁 Referral Codes</button>
-    </div>
-
-    <!-- Payments Sub-view -->
-    <div id="view-payments">
-      <div class="toolbar-section">
-        <div class="filter-row">
-          <div class="search-input-wrap">
-            <input type="text" id="payments-search" class="search-input" placeholder="Search payment rails by bank name, recipient, number, details..." oninput="debounceTrigger('payments')">
-          </div>
-          <div class="filter-group">
-            <span class="count-badge" id="payments-count">Loading...</span>
-            <select id="payments-limit" class="control-select" onchange="changeLimit('payments')">
-              <option value="12">12 / page</option>
-              <option value="24" selected>24 / page</option>
-              <option value="48">48 / page</option>
-            </select>
-          </div>
-        </div>
-      </div>
-      <div class="commerce-grid" id="payments-list"></div>
-      <div id="payments-sentinel" class="scroll-sentinel"></div>
-      <div id="payments-footer" class="load-more-wrap"></div>
-    </div>
-
-    <!-- Referrals Sub-view -->
-    <div id="view-referrals" style="display:none;">
-      <div class="toolbar-section">
-        <div class="filter-row">
-          <div class="search-input-wrap">
-            <input type="text" id="referrals-search" class="search-input" placeholder="Search referral programs, codes, links, benefit perks..." oninput="debounceTrigger('referrals')">
-          </div>
-          <div class="filter-group">
-            <span class="count-badge" id="referrals-count">Loading...</span>
-            <select id="referrals-limit" class="control-select" onchange="changeLimit('referrals')">
-              <option value="12">12 / page</option>
-              <option value="24" selected>24 / page</option>
-              <option value="48">48 / page</option>
-            </select>
-          </div>
-        </div>
-      </div>
-      <div class="commerce-grid" id="referrals-list"></div>
-      <div id="referrals-sentinel" class="scroll-sentinel"></div>
-      <div id="referrals-footer" class="load-more-wrap"></div>
-    </div>
-  </div>
-</div>
-
-<!-- RECEIPTS TAB -->
-<div id="tab-receipts" style="display:none;">
-  <div class="stats-grid">
-    <div class="stat-card">
-      <div class="stat-label">Total Income</div>
-      <div class="stat-value" id="stat-income" style="color:var(--accent-green);">-</div>
-      <div class="stat-icon">📈</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Total Costs</div>
-      <div class="stat-value" id="stat-costs" style="color:var(--accent-pink);">-</div>
-      <div class="stat-icon">📉</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Total Expected</div>
-      <div class="stat-value" id="stat-expected" style="color:var(--accent-amber);">-</div>
-      <div class="stat-icon">🔮</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Outstanding</div>
-      <div class="stat-value" id="stat-outstanding" style="color:var(--accent-cyan);">-</div>
-      <div class="stat-icon">⏳</div>
-    </div>
-  </div>
-  <div class="toolbar-section">
-    <div class="filter-row">
-      <div class="filter-group" id="receipt-type-filters">
-        <button class="tag-pill active" onclick="filterReceiptType('', this)">All Types</button>
-        <button class="tag-pill" onclick="filterReceiptType('income', this)">Income</button>
-        <button class="tag-pill" onclick="filterReceiptType('cost', this)">Cost</button>
-        <button class="tag-pill" onclick="filterReceiptType('expected', this)">Expected</button>
-      </div>
-      <div class="filter-group" id="receipt-status-filters">
-        <button class="tag-pill active" onclick="filterReceiptStatus('', this)">All Status</button>
-        <button class="tag-pill" onclick="filterReceiptStatus('paid', this)">Paid</button>
-        <button class="tag-pill" onclick="filterReceiptStatus('partial', this)">Partial</button>
-        <button class="tag-pill" onclick="filterReceiptStatus('unpaid', this)">Unpaid</button>
-      </div>
-    </div>
-    <div class="filter-row">
-      <div class="search-input-wrap">
-        <input type="text" id="receipt-search" class="search-input" placeholder="Search receipts by event, notes..." oninput="debounceTrigger('receipts')">
-      </div>
-      <span class="count-badge" id="receipts-count">Loading...</span>
-    </div>
-  </div>
-  <div class="events-grid" id="receipts-list"></div>
-  <div id="receipts-sentinel" class="scroll-sentinel"></div>
-  <div id="receipts-footer" class="load-more-wrap"></div>
-</div>
-
-<!-- PROJECTS TAB -->
-<div id="tab-projects" style="display:none;">
-  <div class="toolbar-section">
-    <div class="filter-row">
-      <div class="filter-group">
-        <button class="tag-pill active" onclick="filterProjects('', this)">All Status</button>
-        <button class="tag-pill" onclick="filterProjects('active', this)">Active</button>
-        <button class="tag-pill" onclick="filterProjects('paused', this)">Paused</button>
-        <button class="tag-pill" onclick="filterProjects('completed', this)">Completed</button>
-      </div>
-      <span class="count-badge" id="projects-count">Loading...</span>
-    </div>
-  </div>
-  <div class="contacts-grid" id="projects-list"></div>
-</div>
-
-<!-- DECISIONS TAB -->
-<div id="tab-decisions" style="display:none;">
-  <div class="toolbar-section">
-    <div class="filter-row">
-      <div class="filter-group">
-        <button class="tag-pill active" onclick="filterDecisions('', this)">All Decisions</button>
-        <button class="tag-pill" onclick="filterDecisions('pending', this)">Pending</button>
-        <button class="tag-pill" onclick="filterDecisions('reviewed', this)">Reviewed</button>
-      </div>
-      <span class="count-badge" id="decisions-count">Loading...</span>
-    </div>
-  </div>
-  <div class="events-grid" id="decisions-list"></div>
-</div>
-
-<!-- RADAR TAB -->
-<div id="tab-radar" style="display:none;">
-  <div class="toolbar-section">
-    <div class="filter-row">
-      <div class="filter-group">
-        <button class="tag-pill active" onclick="filterRadar('', this)">All Tiers</button>
-        <button class="tag-pill" onclick="filterRadar('1', this)">Tier 1 (Inner)</button>
-        <button class="tag-pill" onclick="filterRadar('2', this)">Tier 2 (Core)</button>
-        <button class="tag-pill" onclick="filterRadar('3', this)">Tier 3 (Broad)</button>
-        <button class="tag-pill" id="btn-overdue-toggle" onclick="toggleRadarOverdue(this)" style="border-color:var(--accent-amber); color:var(--accent-amber);">⚠️ Overdue Only</button>
-      </div>
-      <span class="count-badge" id="radar-count">Loading...</span>
-    </div>
-  </div>
-  <div class="contacts-grid" id="radar-list"></div>
-</div>
-
-<!-- LIFE OPS TAB -->
-<div id="tab-lifeops" style="display:none;">
-  <div class="stats-grid" id="runway-stats" style="margin-bottom:20px;">
-    <div class="stat-card">
-      <div class="stat-label">Freedom Runway</div>
-      <div class="stat-value" id="lo-runway" style="color:var(--accent-cyan); font-size:26px;">-</div>
-      <div class="stat-icon">🛡️</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Monthly Burn</div>
-      <div class="stat-value" id="lo-burn" style="color:var(--accent-pink); font-size:24px;">-</div>
-      <div class="stat-icon">🔥</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Liquid Capital</div>
-      <div class="stat-value" id="lo-liquid" style="color:var(--accent-green); font-size:24px;">-</div>
-      <div class="stat-icon">💧</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Net Worth</div>
-      <div class="stat-value" id="lo-networth" style="font-size:24px;">-</div>
-      <div class="stat-icon">💎</div>
-    </div>
-  </div>
-  
-  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px; margin-bottom:25px;">
-    <div class="panel">
-      <div class="panel-title"><span>🛠️ Maintenance & Expirations</span></div>
-      <div id="maintenance-list" style="display:flex; flex-direction:column; gap:10px;">Loading...</div>
-    </div>
-    <div class="panel">
-      <div class="panel-title"><span>🔄 Sprint Retrospectives</span></div>
-      <div id="reviews-list" style="display:flex; flex-direction:column; gap:10px;">Loading...</div>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="event-modal">
-  <div class="modal-content">
-    <button class="close-btn" onclick="closeModal()">×</button>
-    <h2 id="modal-title" style="margin-bottom: 8px;"></h2>
-    <div id="modal-meta" style="color: var(--accent-cyan); font-size: 14px; margin-bottom: 16px;"></div>
-    <div id="modal-tags" style="display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap;"></div>
-    <div id="modal-people" style="color: var(--accent-purple); font-size: 14px; margin-bottom: 16px;"></div>
-    <hr style="border: 0; border-top: 1px solid var(--card-border);">
-    <div class="modal-body" id="modal-body"></div>
-    <div id="modal-media"></div>
-  </div>
-</div>
-
-<script>
-// Tab and pagination state store
-const tabStates = {
-  events: {
-    endpoint: '/api/events',
-    listElId: 'events-list',
-    countElId: 'events-count',
-    footerElId: 'events-footer',
-    sentinelId: 'events-sentinel',
-    limit: 25,
-    offset: 0,
-    total: 0,
-    items: [],
-    loading: false,
-    hasMore: true,
-    sort: 'start_date',
-    dir: 'desc',
-    currentTag: ''
-  },
-  contacts: {
-    endpoint: '/api/contacts',
-    listElId: 'contacts-list',
-    countElId: 'contacts-count',
-    footerElId: 'contacts-footer',
-    sentinelId: 'contacts-sentinel',
-    limit: 24,
-    offset: 0,
-    total: 0,
-    items: [],
-    loading: false,
-    hasMore: true,
-    sort: 'event_count',
-    dir: 'desc',
-    source: ''
-  },
-  media: {
-    endpoint: '/api/media',
-    listElId: 'media-list',
-    countElId: 'media-count',
-    footerElId: 'media-footer',
-    sentinelId: 'media-sentinel',
-    limit: 24,
-    offset: 0,
-    total: 0,
-    items: [],
-    loading: false,
-    hasMore: true,
-    sort: 'id',
-    dir: 'desc',
-    mediaType: ''
-  },
-  vendors: {
-    endpoint: '/api/vendors',
-    listElId: 'vendors-list',
-    countElId: 'vendors-count',
-    footerElId: 'vendors-footer',
-    sentinelId: 'vendors-sentinel',
-    limit: 24,
-    offset: 0,
-    total: 0,
-    items: [],
-    loading: false,
-    hasMore: true,
-    sort: 'favorite',
-    dir: 'desc',
-    favoriteOnly: false
-  },
-  links: {
-    endpoint: '/api/links',
-    listElId: 'links-list',
-    countElId: 'links-count',
-    footerElId: 'links-footer',
-    sentinelId: 'links-sentinel',
-    limit: 24,
-    offset: 0,
-    total: 0,
-    items: [],
-    loading: false,
-    hasMore: true,
-    sort: 'category',
-    dir: 'asc',
-    category: ''
-  },
-  payments: {
-    endpoint: '/api/payment-accounts',
-    listElId: 'payments-list',
-    countElId: 'payments-count',
-    footerElId: 'payments-footer',
-    sentinelId: 'payments-sentinel',
-    limit: 24,
-    offset: 0,
-    total: 0,
-    items: [],
-    loading: false,
-    hasMore: true,
-    sort: 'category',
-    dir: 'asc'
-  },
-  referrals: {
-    endpoint: '/api/referrals',
-    listElId: 'referrals-list',
-    countElId: 'referrals-count',
-    footerElId: 'referrals-footer',
-    sentinelId: 'referrals-sentinel',
-    limit: 24,
-    offset: 0,
-    total: 0,
-    items: [],
-    loading: false,
-    hasMore: true,
-    sort: 'category',
-    dir: 'asc'
-  },
-  receipts: {
-    endpoint: '/api/receipts',
-    listElId: 'receipts-list',
-    countElId: 'receipts-count',
-    footerElId: 'receipts-footer',
-    sentinelId: 'receipts-sentinel',
-    limit: 50,
-    offset: 0,
-    total: 0,
-    items: [],
-    loading: false,
-    hasMore: true,
-    sort: 'created_at',
-    dir: 'desc',
-    typeFilter: '',
-    statusFilter: ''
-  }
-};
-
-const debounceTimers = {};
-const observers = {};
-
-// Overview Stats & Visualizations Loader
-async function loadStats() {
-  try {
-    const res = await fetch('/api/stats');
-    const data = await res.json();
-    
-    document.getElementById('stat-events').innerText = data.total_events || 0;
-    document.getElementById('stat-contacts').innerText = data.total_contacts || 0;
-    document.getElementById('stat-links').innerText = data.total_links || 0;
-    document.getElementById('stat-media').innerText = data.total_media || 0;
-
-    if (data.finance) {
-      document.getElementById('stat-netcash').innerText = 'Rp' + (data.finance.net_cash != null ? data.finance.net_cash.toLocaleString('id-ID') : '-');
-      document.getElementById('stat-netpos').innerText = 'Rp' + (data.finance.net_position != null ? data.finance.net_position.toLocaleString('id-ID') : '-');
-      if (document.getElementById('stat-income')) {
-        document.getElementById('stat-income').innerText = 'Rp' + (data.finance.total_income != null ? data.finance.total_income.toLocaleString('id-ID') : '-');
-      }
-      if (document.getElementById('stat-costs')) {
-        document.getElementById('stat-costs').innerText = 'Rp' + (data.finance.total_costs != null ? data.finance.total_costs.toLocaleString('id-ID') : '-');
-      }
-      if (document.getElementById('stat-expected')) {
-        document.getElementById('stat-expected').innerText = 'Rp' + (data.finance.total_expected != null ? data.finance.total_expected.toLocaleString('id-ID') : '-');
-      }
-      if (document.getElementById('stat-outstanding')) {
-        document.getElementById('stat-outstanding').innerText = 'Rp' + (data.finance.outstanding != null ? data.finance.outstanding.toLocaleString('id-ID') : '-');
-      }
-    }
-
-    try {
-      const rwRes = await fetch('/api/runway');
-      const rwData = await rwRes.json();
-      const rwEl = document.getElementById('stat-runway');
-      if (rwEl) {
-        rwEl.innerText = rwData.is_infinite ? '∞ Months' : `${rwData.runway_months}m`;
-      }
-    } catch(e) {}
-
-    try {
-      const rdRes = await fetch('/api/radar');
-      const rdData = await rdRes.json();
-      const rdEl = document.getElementById('stat-radar');
-      if (rdEl) {
-        rdEl.innerText = rdData.summary ? `${rdData.summary.total_overdue} Overdue` : '0';
-      }
-    } catch(e) {}
-
-    // 1. Render Activity Heatmap
-    renderHeatmap(data.daily_counts || {});
-
-    // 2. Render Monthly Event Activity Bar Chart
-    const chartEl = document.getElementById('monthly-chart');
-    chartEl.innerHTML = '';
-    const monthlyCounts = data.monthly_counts || [];
-    const maxCount = Math.max(...monthlyCounts.map(m => m.count), 1);
-    
-    monthlyCounts.slice().reverse().forEach(m => {
-      const col = document.createElement('div');
-      col.className = 'chart-bar-col';
-      const heightPct = (m.count / maxCount) * 100;
-      col.innerHTML = `
-        <div class="bar-wrapper">
-          <div class="bar-fill" style="height: ${heightPct}%" data-count="${m.count}"></div>
-        </div>
-        <div class="bar-label">${m.year_month}</div>
-      `;
-      chartEl.appendChild(col);
-    });
-
-    // 3. Render Cashflow Breakdown Chart
-    renderCashflowChart(data.cashflow || []);
-
-    // 4. Render Media Summary Badges
-    renderMediaSummary(data.media_summary || {});
-
-    // 5. Render Top Places Cloud
-    renderTopPlaces(data.top_places || []);
-
-    // 6. Render Top Categories / Tags Cloud
-    const tagsEl = document.getElementById('top-tags');
-    tagsEl.innerHTML = '';
-    (data.top_tags || []).forEach(([tag, count]) => {
-      const btn = document.createElement('div');
-      btn.className = `tag-pill ${tabStates.events.currentTag === tag ? 'active' : ''}`;
-      btn.innerHTML = `${escapeHtml(tag)} <span class="tag-count">${count}</span>`;
-      btn.onclick = () => filterByTag(tag);
-      tagsEl.appendChild(btn);
-    });
-  } catch (err) {
-    console.error('Failed to load stats:', err);
-  }
-}
-
-// 1. Heatmap Generator (Last 52 Weeks)
-function renderHeatmap(dailyCounts) {
-  const gridEl = document.getElementById('heatmap-grid');
-  const monthsEl = document.getElementById('heatmap-months');
-  const labelEl = document.getElementById('heatmap-total-label');
-  if (!gridEl || !monthsEl) return;
-
-  gridEl.innerHTML = '';
-  monthsEl.innerHTML = '';
-
-  const today = new Date();
-  // Compute start date: 52 weeks ago, aligned to Monday
-  const startDate = new Date(today);
-  startDate.setDate(today.getDate() - (52 * 7));
-  const dayOfWeek = startDate.getDay(); // 0 is Sun, 1 is Mon...
-  const diffToMonday = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
-  startDate.setDate(startDate.getDate() + diffToMonday);
-
-  let totalLoggedDays = 0;
-  let totalEventsInPeriod = 0;
-  const monthPositions = [];
-  let lastMonth = -1;
-
-  const current = new Date(startDate);
-  let weekIndex = 0;
-
-  while (current <= today || current.getDay() !== 1) {
-    const y = current.getFullYear();
-    const m = String(current.getMonth() + 1).padStart(2, '0');
-    const d = String(current.getDate()).padStart(2, '0');
-    const dateStr = `${y}-${m}-${d}`;
-
-    const count = dailyCounts[dateStr] || 0;
-    if (count > 0) {
-      totalLoggedDays++;
-      totalEventsInPeriod += count;
-    }
-
-    let level = 0;
-    if (count >= 10) level = 4;
-    else if (count >= 6) level = 3;
-    else if (count >= 3) level = 2;
-    else if (count >= 1) level = 1;
-
-    const cell = document.createElement('div');
-    cell.className = 'heatmap-cell';
-    cell.setAttribute('data-level', level);
-    cell.setAttribute('title', `${count} event${count === 1 ? '' : 's'} on ${dateStr}`);
-    cell.onclick = () => filterByDate(dateStr);
-    gridEl.appendChild(cell);
-
-    // Track month label positions on Mondays
-    if (current.getDay() === 1) {
-      const monthNum = current.getMonth();
-      if (monthNum !== lastMonth) {
-        monthPositions.push({
-          month: current.toLocaleString('default', { month: 'short' }),
-          week: weekIndex
-        });
-        lastMonth = monthNum;
-      }
-      weekIndex++;
-    }
-
-    current.setDate(current.getDate() + 1);
-  }
-
-  // Render Month Headers
-  monthPositions.forEach(mp => {
-    const span = document.createElement('span');
-    span.innerText = mp.month;
-    monthsEl.appendChild(span);
-  });
-
-  if (labelEl) {
-    labelEl.innerText = `${totalEventsInPeriod} events across ${totalLoggedDays} active days`;
-  }
-}
-
-// 2. Cashflow Grouped Bar Chart
-function renderCashflowChart(cashflowList) {
-  const chartEl = document.getElementById('cashflow-chart');
-  if (!chartEl) return;
-  chartEl.innerHTML = '';
-
-  if (!cashflowList || cashflowList.length === 0) {
-    chartEl.innerHTML = '<div style="color:var(--text-muted); font-size:13px; margin:auto;">No financial receipt records yet.</div>';
-    return;
-  }
-
-  const list = cashflowList.slice(0, 8).reverse();
-  const maxVal = Math.max(...list.map(c => Math.max(c.income || 0, c.cost || 0, c.expected || 0)), 1);
-
-  list.forEach(c => {
-    const col = document.createElement('div');
-    col.className = 'cf-col';
-
-    const incPct = ((c.income || 0) / maxVal) * 100;
-    const costPct = ((c.cost || 0) / maxVal) * 100;
-    const expPct = ((c.expected || 0) / maxVal) * 100;
-
-    col.innerHTML = `
-      <div class="cf-bars-wrap">
-        <div class="cf-bar income" style="height: ${Math.max(incPct, 4)}%" data-tooltip="Income: Rp${(c.income || 0).toLocaleString('id-ID')}"></div>
-        <div class="cf-bar cost" style="height: ${Math.max(costPct, 4)}%" data-tooltip="Cost: Rp${(c.cost || 0).toLocaleString('id-ID')}"></div>
-        <div class="cf-bar expected" style="height: ${Math.max(expPct, 4)}%" data-tooltip="Expected: Rp${(c.expected || 0).toLocaleString('id-ID')}"></div>
-      </div>
-      <div class="bar-label">${c.year_month}</div>
-    `;
-    chartEl.appendChild(col);
-  });
-}
-
-// 3. Media Summary Badges
-function renderMediaSummary(mediaSummary) {
-  const container = document.getElementById('media-summary-badges');
-  if (!container) return;
-  container.innerHTML = '';
-
-  const typeIcons = {
-    book: '📖 Book',
-    film: '🎬 Film',
-    anime: '🎌 Anime',
-    manga: '📚 Manga',
-    drama: '🎭 Drama'
-  };
-
-  const types = Object.keys(mediaSummary);
-  if (types.length === 0) {
-    container.innerHTML = '<span style="color:var(--text-muted); font-size:13px;">No media logged yet. Run <code>ierp sync</code> to import.</span>';
-    return;
-  }
-
-  types.forEach(typeKey => {
-    const count = mediaSummary[typeKey];
-    const label = typeIcons[typeKey] || typeKey.toUpperCase();
-    const pill = document.createElement('div');
-    pill.className = 'media-badge-pill';
-    pill.innerHTML = `
-      <span>${label}</span>
-      <span class="media-badge-count">${count}</span>
-    `;
-    pill.onclick = () => filterByMediaType(typeKey);
-    container.appendChild(pill);
-  });
-}
-
-// 4. Top Places Cloud
-function renderTopPlaces(topPlaces) {
-  const container = document.getElementById('top-places');
-  if (!container) return;
-  container.innerHTML = '';
-
-  if (!topPlaces || topPlaces.length === 0) {
-    container.innerHTML = '<span style="color:var(--text-muted); font-size:13px;">No location venues logged yet.</span>';
-    return;
-  }
-
-  topPlaces.forEach(([place, count]) => {
-    const pill = document.createElement('div');
-    pill.className = 'tag-pill';
-    pill.innerHTML = `📍 ${escapeHtml(place)} <span class="tag-count">${count}</span>`;
-    pill.onclick = () => filterByPlace(place);
-    container.appendChild(pill);
-  });
-}
-
-// Interaction Handlers from Visualizations
-function filterByDate(dateStr) {
-  switchTab('events');
-  const fromEl = document.getElementById('event-from');
-  const toEl = document.getElementById('event-to');
-  if (fromEl) fromEl.value = dateStr;
-  if (toEl) toEl.value = dateStr;
-  resetAndFetch('events');
-}
-
-function filterByPlace(placeName) {
-  switchTab('events');
-  const searchEl = document.getElementById('event-search');
-  if (searchEl) searchEl.value = placeName;
-  resetAndFetch('events');
-}
-
-function filterByMediaType(mediaType) {
-  switchTab('media');
-  const selectEl = document.getElementById('media-type-select');
-  if (selectEl) selectEl.value = mediaType;
-  resetAndFetch('media');
-}
-
-// Utility: HTML Escaper
-function escapeHtml(str) {
-  if (str === null || str === undefined) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-// Reusable Query Builder for each Tab
-function buildQueryParams(tabKey) {
-  const state = tabStates[tabKey];
-  const params = new URLSearchParams();
-  params.set('limit', state.limit);
-  params.set('offset', state.offset);
-  if (state.sort) params.set('sort', state.sort);
-  if (state.dir) params.set('dir', state.dir);
-
-  if (tabKey === 'events') {
-    const q = document.getElementById('event-search')?.value.trim();
-    const fromDate = document.getElementById('event-from')?.value;
-    const toDate = document.getElementById('event-to')?.value;
-    if (q) params.set('q', q);
-    if (state.currentTag) params.set('tag', state.currentTag);
-    if (fromDate) params.set('from', fromDate);
-    if (toDate) params.set('to', toDate);
-  } else if (tabKey === 'contacts') {
-    const q = document.getElementById('contact-search')?.value.trim();
-    if (q) params.set('q', q);
-    if (state.source) params.set('source', state.source);
-  } else if (tabKey === 'media') {
-    const q = document.getElementById('media-search')?.value.trim();
-    if (q) params.set('q', q);
-    if (state.mediaType) params.set('type', state.mediaType);
-  } else if (tabKey === 'vendors') {
-    const q = document.getElementById('vendor-search')?.value.trim();
-    const cat = document.getElementById('vendor-category-filter')?.value;
-    if (q) params.set('q', q);
-    if (cat) params.set('category', cat);
-    if (state.favoriteOnly) params.set('favorite', '1');
-  } else if (tabKey === 'links') {
-    const q = document.getElementById('links-search')?.value.trim();
-    if (q) params.set('q', q);
-    if (state.category) params.set('category', state.category);
-  } else if (tabKey === 'payments') {
-    const q = document.getElementById('payments-search')?.value.trim();
-    if (q) params.set('q', q);
-  } else if (tabKey === 'referrals') {
-    const q = document.getElementById('referrals-search')?.value.trim();
-    if (q) params.set('q', q);
-  } else if (tabKey === 'receipts') {
-    const q = document.getElementById('receipt-search')?.value.trim();
-    if (q) params.set('q', q);
-    if (state.typeFilter) params.set('type', state.typeFilter);
-    if (state.statusFilter) params.set('status', state.statusFilter);
-  }
-
-  return params;
-}
-
-// Fetch items for a tab (supports pagination append)
-async function fetchTabItems(tabKey, isAppend = false) {
-  const state = tabStates[tabKey];
-  if (state.loading) return;
-  if (isAppend && !state.hasMore) return;
-
-  state.loading = true;
-  if (!isAppend) {
-    state.offset = 0;
-    state.items = [];
-    state.hasMore = true;
-    const listEl = document.getElementById(state.listElId);
-    if (listEl) listEl.innerHTML = '<div class="loading-indicator">⏳ Loading data...</div>';
-  }
-
-  const footerEl = document.getElementById(state.footerElId);
-  if (footerEl && isAppend) {
-    footerEl.innerHTML = '<div class="loading-indicator">⏳ Loading more items...</div>';
-  }
-
-  try {
-    const params = buildQueryParams(tabKey);
-    const res = await fetch(`${state.endpoint}?${params.toString()}`);
-    const data = await res.json();
-
-    const items = Array.isArray(data) ? data : (data.items || []);
-    const total = (typeof data.total === 'number') ? data.total : (isAppend ? state.items.length + items.length : items.length);
-
-    state.total = total;
-    if (isAppend) {
-      state.items.push(...items);
-    } else {
-      state.items = items;
-    }
-
-    state.offset = state.items.length;
-    state.hasMore = state.items.length < state.total && items.length > 0;
-
-    // Populate dynamic categories for filter selects
-    if (!isAppend) {
-      if (tabKey === 'vendors' && data.categories) {
-        populateCategoryFilter('vendor-category-filter', data.categories);
-      } else if (tabKey === 'links' && data.categories) {
-        populateLinksCategoryPills(data.categories);
-      }
-    }
-
-    renderTabItems(tabKey);
-    updateCountBadge(tabKey);
-    renderFooter(tabKey);
-  } catch (err) {
-    console.error(`Failed to fetch ${tabKey}:`, err);
-    const listEl = document.getElementById(state.listElId);
-    if (listEl && !isAppend) {
-      listEl.innerHTML = `<div style="color:var(--accent-pink); text-align:center; padding:30px;">Error loading data.</div>`;
-    }
-  } finally {
-    state.loading = false;
-  }
-}
-
-function updateCountBadge(tabKey) {
-  const state = tabStates[tabKey];
-  const countEl = document.getElementById(state.countElId);
-  if (countEl) {
-    countEl.innerText = `Showing ${state.items.length} of ${state.total}`;
-  }
-}
-
-function renderFooter(tabKey) {
-  const state = tabStates[tabKey];
-  const footerEl = document.getElementById(state.footerElId);
-  if (!footerEl) return;
-
-  if (state.hasMore) {
-    footerEl.innerHTML = `<button class="load-more-btn" onclick="fetchTabItems('${tabKey}', true)">Load More (${state.total - state.items.length} remaining)</button>`;
-  } else if (state.total > 0) {
-    footerEl.innerHTML = `<div class="end-indicator">✓ All ${state.total} items loaded</div>`;
-  } else {
-    footerEl.innerHTML = '';
-  }
-}
-
-// Master Renderer Router
-function renderTabItems(tabKey) {
-  const state = tabStates[tabKey];
-  const listEl = document.getElementById(state.listElId);
-  if (!listEl) return;
-
-  if (state.items.length === 0) {
-    listEl.innerHTML = `<div style="color: var(--text-muted); text-align: center; padding: 40px; grid-column: 1 / -1;">No matching items found.</div>`;
-    return;
-  }
-
-  if (tabKey === 'events') renderEventsList(listEl, state.items);
-  else if (tabKey === 'contacts') renderContactsGrid(listEl, state.items);
-  else if (tabKey === 'media') renderMediaGrid(listEl, state.items);
-  else if (tabKey === 'vendors') renderVendorsGrid(listEl, state.items);
-  else if (tabKey === 'links') renderLinksGrid(listEl, state.items);
-  else if (tabKey === 'payments') renderPaymentsGrid(listEl, state.items);
-  else if (tabKey === 'referrals') renderReferralsGrid(listEl, state.items);
-  else if (tabKey === 'receipts') renderReceiptsList(listEl, state.items);
-}
-
-// Renderers
-function renderEventsList(container, items) {
-  container.innerHTML = '';
-  items.forEach(ev => {
-    const card = document.createElement('div');
-    card.className = 'event-card';
-    card.onclick = () => showEventModal(ev.id);
-    
-    const tagsHtml = (ev.tags || []).map(t => `<span class="tag-pill" style="font-size:11px; padding:3px 8px;">${escapeHtml(t)}</span>`).join('');
-    const peopleHtml = (ev.linked_contacts || []).map(c => `👤 ${escapeHtml(c.name)}`).join(', ');
-
-    card.innerHTML = `
-      <div class="event-header">
-        <div class="event-title">${escapeHtml(ev.title)}</div>
-        <div class="event-date">${escapeHtml(ev.start_date || ev.raw_date || 'No Date')}</div>
-      </div>
-      <div class="event-meta">
-        ${ev.place ? `<div class="meta-item">📍 ${escapeHtml(ev.place)}</div>` : ''}
-        ${peopleHtml ? `<div class="meta-item" style="color:var(--accent-purple);">${peopleHtml}</div>` : ''}
-      </div>
-      <div style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;">${tagsHtml}</div>
-      <div class="event-notes-preview">${escapeHtml(ev.notes || '')}</div>
-    `;
-    container.appendChild(card);
-  });
-}
-
-function renderContactsGrid(container, items) {
-  container.innerHTML = '';
-  items.forEach(c => {
-    const card = document.createElement('div');
-    card.className = 'contact-card';
-    
-    let badgeColor = 'var(--accent-blue)';
-    let badgeText = (c.source || 'manual').toUpperCase();
-    if (c.source === 'google') { badgeColor = 'var(--accent-green)'; }
-    if (c.source === 'merged') { badgeColor = 'var(--accent-pink)'; }
-
-    card.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
-        <div class="contact-name">${escapeHtml(c.name)}</div>
-        <span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; background:rgba(255,255,255,0.06); color:${badgeColor}; border:1px solid ${badgeColor};">${badgeText}</span>
-      </div>
-      ${c.org ? `<div class="contact-org">🏢 ${escapeHtml(c.org)} ${c.client ? `(${escapeHtml(c.client)})` : ''}</div>` : ''}
-      ${c.email ? `<div style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">✉️ ${escapeHtml(c.email)}</div>` : ''}
-      ${c.phone ? `<div style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">📞 ${escapeHtml(c.phone)}</div>` : ''}
-      ${c.location ? `<div style="font-size:13px; color:var(--text-muted); margin-bottom:8px;">📍 ${escapeHtml(c.location)}</div>` : ''}
-      <div class="contact-badge">${c.event_count || 0} Linked Events</div>
-    `;
-    container.appendChild(card);
-  });
-}
-
-function renderMediaGrid(container, items) {
-  container.innerHTML = '';
-  items.forEach(m => {
-    const card = document.createElement('div');
-    card.className = 'media-card';
-
-    const typeIcons = { book: '📚', film: '🎬', anime: '⛩️', manga: '📖', drama: '🎭' };
-    const icon = typeIcons[m.media_type] || '📁';
-    const ratingHtml = m.rating !== null && m.rating !== undefined 
-      ? `<span class="media-rating">⭐ ${typeof m.rating === 'number' ? m.rating.toFixed(1) : m.rating}</span>`
-      : '';
-    const statusText = m.status ? `<span style="font-size:11px; padding:2px 8px; border-radius:6px; background:rgba(255,255,255,0.06); color:var(--accent-cyan); text-transform:capitalize;">${escapeHtml(m.status)}</span>` : '';
-
-    card.innerHTML = `
-      <div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-          <span class="media-type-badge">${icon} ${escapeHtml(m.media_type)}</span>
-          <span style="font-size:11px; color:var(--text-muted);">${escapeHtml(m.source || '')}</span>
-        </div>
-        <div class="media-title">${escapeHtml(m.title)}</div>
-        ${m.author ? `<div style="font-size:13px; color:var(--text-muted); margin-top:4px;">By ${escapeHtml(m.author)}</div>` : ''}
-      </div>
-      <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--card-border); padding-top:10px; margin-top:6px;">
-        <div style="display:flex; gap:8px; align-items:center;">
-          ${statusText}
-          ${ratingHtml}
-        </div>
-        <span style="font-size:12px; color:var(--text-muted); font-family:'JetBrains Mono',monospace;">${escapeHtml(m.date || '')}</span>
-      </div>
-    `;
-    container.appendChild(card);
-  });
-}
-
-function renderVendorsGrid(container, items) {
-  container.innerHTML = '';
-  items.forEach(v => {
-    const card = document.createElement('div');
-    card.className = 'vendor-card';
-    const isFav = Boolean(v.favorite);
-
-    card.innerHTML = `
-      <div class="vendor-header">
-        <div>
-          <div class="vendor-name">${escapeHtml(v.name)}</div>
-          <span style="display:inline-block; font-size:11px; color:var(--accent-purple); background:rgba(138,43,226,0.1); border:1px solid rgba(138,43,226,0.25); padding:2px 8px; border-radius:8px; margin-top:4px;">${escapeHtml(v.category || 'General')}</span>
-        </div>
-        <button class="fav-btn ${isFav ? 'is-fav' : ''}" title="${isFav ? 'Remove Favorite' : 'Mark Favorite'}" onclick="toggleVendorFavorite(${v.id}, event)">★</button>
-      </div>
-      ${v.location ? `<div style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">📍 ${escapeHtml(v.location)}</div>` : ''}
-      ${v.phone ? `<div style="font-size:13px; color:var(--accent-cyan); margin-bottom:4px;">📞 ${escapeHtml(v.phone)}</div>` : ''}
-      ${v.email ? `<div style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">✉️ ${escapeHtml(v.email)}</div>` : ''}
-      ${v.notes ? `<div style="font-size:13.5px; color:var(--text-muted); margin-top:8px; line-height:1.4;">${escapeHtml(v.notes)}</div>` : ''}
-    `;
-    container.appendChild(card);
-  });
-}
-
-function renderLinksGrid(container, items) {
-  container.innerHTML = '';
-  items.forEach(l => {
-    const card = document.createElement('div');
-    card.className = 'link-card';
-
-    card.innerHTML = `
-      <div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-          <strong style="font-size:15px; color:#fff;">${escapeHtml(l.label)}</strong>
-          <span style="font-size:10.5px; padding:2px 6px; border-radius:6px; background:rgba(255,255,255,0.06); color:var(--accent-purple); text-transform:uppercase;">${escapeHtml(l.category || 'Link')}</span>
-        </div>
-        <a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer" class="link-url">
-          ${escapeHtml(l.url)} ↗
-        </a>
-      </div>
-      ${l.notes ? `<div style="font-size:13px; color:var(--text-muted);">${escapeHtml(l.notes)}</div>` : ''}
-    `;
-    container.appendChild(card);
-  });
-}
-
-function renderPaymentsGrid(container, items) {
-  container.innerHTML = '';
-  items.forEach(p => {
-    const card = document.createElement('div');
-    card.className = 'commerce-card';
-
-    card.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
-        <strong style="font-size:16px; color:#fff;">${escapeHtml(p.name)}</strong>
-        <span style="font-size:11px; padding:2px 8px; border-radius:8px; background:rgba(79,172,254,0.12); color:var(--accent-blue);">${escapeHtml(p.category || 'Bank')}</span>
-      </div>
-      <div style="font-size:13px; color:var(--text-muted); margin-bottom:6px;">Recipient: <strong style="color:var(--text-main);">${escapeHtml(p.recipient || 'Personal')}</strong></div>
-      ${p.number ? `
-        <div class="copy-box">
-          <span>${escapeHtml(p.number)}</span>
-          <button class="copy-btn" onclick="copyText('${escapeHtml(p.number)}', this)">Copy</button>
-        </div>
-      ` : ''}
-      ${p.details ? `<div style="font-size:13px; color:var(--text-muted); margin-top:6px;">${escapeHtml(p.details)}</div>` : ''}
-    `;
-    container.appendChild(card);
-  });
-}
-
-function renderReferralsGrid(container, items) {
-  container.innerHTML = '';
-  items.forEach(r => {
-    const card = document.createElement('div');
-    card.className = 'commerce-card';
-    const statusColor = (r.status === 'ACTIVE' || r.status === 'ONLINE') ? 'var(--accent-green)' : 'var(--accent-amber)';
-
-    card.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
-        <strong style="font-size:16px; color:#fff;">${escapeHtml(r.name)}</strong>
-        <span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:8px; background:rgba(255,255,255,0.06); color:${statusColor}; border:1px solid ${statusColor};">${escapeHtml(r.status || 'ACTIVE')}</span>
-      </div>
-      <div style="font-size:12px; color:var(--accent-purple); margin-bottom:8px;">${escapeHtml(r.category || 'Program')}</div>
-      ${r.benefit ? `<div style="font-size:13px; color:var(--text-main); margin-bottom:10px;">🎁 ${escapeHtml(r.benefit)}</div>` : ''}
-      ${r.code ? `
-        <div class="copy-box">
-          <span>Code: ${escapeHtml(r.code)}</span>
-          <button class="copy-btn" onclick="copyText('${escapeHtml(r.code)}', this)">Copy</button>
-        </div>
-      ` : ''}
-      ${r.link ? `
-        <div style="margin-top:8px;">
-          <a href="${escapeHtml(r.link)}" target="_blank" rel="noopener noreferrer" class="link-url">Open Referral Link ↗</a>
-        </div>
-      ` : ''}
-    `;
-    container.appendChild(card);
-  });
-}
-
-function renderReceiptsList(container, items) {
-  container.innerHTML = '';
-  if (items.length === 0) {
-    container.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 40px; grid-column: 1 / -1;">No receipts match your filters.</div>';
-    return;
-  }
-  items.forEach(r => {
-    const card = document.createElement('div');
-    card.className = 'event-card';
-    const typeColor = r.type === 'income' ? 'var(--accent-green)' : (r.type === 'cost' ? 'var(--accent-pink)' : 'var(--accent-amber)');
-    const statusColor = r.status === 'paid' ? 'var(--accent-green)' : (r.status === 'partial' ? 'var(--accent-cyan)' : 'var(--accent-pink)');
-
-    card.innerHTML = `
-      <div class="event-header">
-        <div class="event-title">Rp${r.amount.toLocaleString('id-ID')} <span style="font-size:13px; color:${typeColor}; font-weight:600; text-transform:uppercase;">[${r.type}]</span></div>
-        <div class="event-date">${escapeHtml(r.created_at || '')}</div>
-      </div>
-      <div class="event-meta">
-        ${r.event_title ? `<div class="meta-item">📎 ${escapeHtml(r.event_title)}</div>` : ''}
-        <span style="font-size:11px; padding:2px 8px; border-radius:8px; background:rgba(255,255,255,0.06); color:${statusColor}; border:1px solid ${statusColor};">${escapeHtml(r.status)}</span>
-      </div>
-      ${r.notes ? `<div class="event-notes-preview">${escapeHtml(r.notes)}</div>` : ''}
-    `;
-    container.appendChild(card);
-  });
-}
-
-// Interactive Actions
-async function toggleVendorFavorite(vendorId, event) {
-  if (event) event.stopPropagation();
-  try {
-    const res = await fetch('/api/vendors/favorite', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: vendorId })
-    });
-    const data = await res.json();
-    if (data.status === 'success') {
-      const state = tabStates.vendors;
-      const vendor = state.items.find(v => v.id === vendorId);
-      if (vendor) {
-        vendor.favorite = data.favorite;
-        renderVendorsGrid(document.getElementById(state.listElId), state.items);
-      }
-    }
-  } catch (err) {
-    console.error('Failed to toggle vendor favorite:', err);
-  }
-}
-
-function copyText(text, btn) {
-  navigator.clipboard.writeText(text).then(() => {
-    const orig = btn.innerText;
-    btn.innerText = '✓ Copied';
-    btn.classList.add('copied');
-    setTimeout(() => {
-      btn.innerText = orig;
-      btn.classList.remove('copied');
-    }, 1500);
-  }).catch(err => {
-    console.error('Copy failed:', err);
-  });
-}
-
-// Sorting Controls
-function setSort(tabKey, colName) {
-  const state = tabStates[tabKey];
-  if (state.sort === colName) {
-    state.dir = state.dir === 'asc' ? 'desc' : 'asc';
-  } else {
-    state.sort = colName;
-    state.dir = (colName === 'start_date' || colName === 'event_count' || colName === 'id' || colName === 'rating' || colName === 'favorite') ? 'desc' : 'asc';
-  }
-
-  // Update button active state & arrows in sort bar
-  const sortBar = document.getElementById(`${tabKey}-sort-bar`);
-  if (sortBar) {
-    sortBar.querySelectorAll('.sort-btn').forEach(btn => {
-      if (btn.getAttribute('data-col') === colName) {
-        btn.classList.add('active');
-        const dirSpan = btn.querySelector('.sort-dir');
-        if (dirSpan) dirSpan.innerText = state.dir === 'asc' ? '▲' : '▼';
-      } else {
-        btn.classList.remove('active');
-        const dirSpan = btn.querySelector('.sort-dir');
-        if (dirSpan) dirSpan.innerText = '';
-      }
-    });
-  }
-
-  resetAndFetch(tabKey);
-}
-
-function changeLimit(tabKey) {
-  const selectEl = document.getElementById(`${tabKey}-limit`);
-  if (selectEl) {
-    tabStates[tabKey].limit = parseInt(selectEl.value, 10);
-    resetAndFetch(tabKey);
-  }
-}
-
-function resetAndFetch(tabKey) {
-  tabStates[tabKey].offset = 0;
-  fetchTabItems(tabKey, false);
-}
-
-function debounceTrigger(tabKey) {
-  clearTimeout(debounceTimers[tabKey]);
-  debounceTimers[tabKey] = setTimeout(() => {
-    resetAndFetch(tabKey);
-  }, 250);
-}
-
-// Specific Filters
-function filterByTag(tag) {
-  tabStates.events.currentTag = tabStates.events.currentTag === tag ? '' : tag;
-  const eventTabBtn = document.querySelectorAll('.tab-btn')[1];
-  switchTab('events', { target: eventTabBtn });
-  resetAndFetch('events');
-}
-
-function clearEventFilters() {
-  document.getElementById('event-search').value = '';
-  document.getElementById('event-from').value = '';
-  document.getElementById('event-to').value = '';
-  tabStates.events.currentTag = '';
-  resetAndFetch('events');
-}
-
-function filterContactsSource(src, btn) {
-  document.querySelectorAll('#contact-source-filters .tag-pill').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-  tabStates.contacts.source = src;
-  resetAndFetch('contacts');
-}
-
-function filterMediaType(type, btn) {
-  document.querySelectorAll('#media-type-filters .tag-pill').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-  tabStates.media.mediaType = type;
-  resetAndFetch('media');
-}
-
-function toggleVendorFavFilter(btn) {
-  tabStates.vendors.favoriteOnly = !tabStates.vendors.favoriteOnly;
-  btn.classList.toggle('active', tabStates.vendors.favoriteOnly);
-  resetAndFetch('vendors');
-}
-
-function populateCategoryFilter(selectId, categories) {
-  const sel = document.getElementById(selectId);
-  if (!sel) return;
-  const currentVal = sel.value;
-  sel.innerHTML = '<option value="">All Categories</option>';
-  categories.forEach(cat => {
-    if (cat) {
-      const opt = document.createElement('option');
-      opt.value = cat;
-      opt.innerText = cat;
-      if (cat === currentVal) opt.selected = true;
-      sel.appendChild(opt);
-    }
-  });
-}
-
-function populateLinksCategoryPills(categories) {
-  const container = document.getElementById('links-category-filters');
-  if (!container) return;
-  const current = tabStates.links.category;
-  container.innerHTML = `<button class="tag-pill ${!current ? 'active' : ''}" onclick="filterLinksCategory('', this)">All Links</button>`;
-  categories.forEach(cat => {
-    if (cat) {
-      const btn = document.createElement('button');
-      btn.className = `tag-pill ${current === cat ? 'active' : ''}`;
-      btn.innerText = cat;
-      btn.onclick = () => filterLinksCategory(cat, btn);
-      container.appendChild(btn);
-    }
-  });
-}
-
-function filterLinksCategory(cat, btn) {
-  document.querySelectorAll('#links-category-filters .tag-pill').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-  tabStates.links.category = cat;
-  resetAndFetch('links');
-}
-
-function filterReceiptType(type, btn) {
-  document.querySelectorAll('#receipt-type-filters .tag-pill').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-  tabStates.receipts.typeFilter = type;
-  resetAndFetch('receipts');
-}
-
-function filterReceiptStatus(status, btn) {
-  document.querySelectorAll('#receipt-status-filters .tag-pill').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-  tabStates.receipts.statusFilter = status;
-  resetAndFetch('receipts');
-}
-
-function switchCommerceSubtab(subtab) {
-  document.getElementById('subtab-payments-btn').classList.toggle('active', subtab === 'payments');
-  document.getElementById('subtab-referrals-btn').classList.toggle('active', subtab === 'referrals');
-  document.getElementById('view-payments').style.display = subtab === 'payments' ? 'block' : 'none';
-  document.getElementById('view-referrals').style.display = subtab === 'referrals' ? 'block' : 'none';
-
-  if (subtab === 'payments' && tabStates.payments.items.length === 0) {
-    resetAndFetch('payments');
-    initIntersectionObserver('payments');
-  } else if (subtab === 'referrals' && tabStates.referrals.items.length === 0) {
-    resetAndFetch('referrals');
-    initIntersectionObserver('referrals');
-  }
-}
-
-// Auto-Merge Duplicates Trigger
-async function triggerAutoMerge() {
-  if (!confirm('Scan and automatically merge duplicate contacts between manual CRM and Google Contacts?')) return;
-  try {
-    const res = await fetch('/api/contacts/merge', { 
-      method: 'POST', 
-      headers: {'Content-Type': 'application/json'}, 
-      body: JSON.stringify({ auto: true }) 
-    });
-    const data = await res.json();
-    alert(`Auto-merge complete!\\nMerged ${data.merged_count} contact(s).`);
-    resetAndFetch('contacts');
-    loadStats();
-  } catch (err) {
-    alert('Error during contact auto-merge: ' + err);
-  }
-}
-
-// Modal Detail View
-async function showEventModal(eventId) {
-  try {
-    const res = await fetch('/api/events/' + eventId);
-    const ev = await res.json();
-    
-    document.getElementById('modal-title').innerText = ev.title;
-    document.getElementById('modal-meta').innerText = `${ev.start_date || 'No Date'} ${ev.place ? ' • 📍 ' + ev.place : ''}`;
-    document.getElementById('modal-tags').innerHTML = (ev.tags || []).map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join('');
-    document.getElementById('modal-people').innerText = (ev.contacts || []).map(c => `👤 ${c.name} (${c.org || 'Contact'})`).join(', ');
-    document.getElementById('modal-body').innerText = ev.notes || 'No description notes available.';
-    
-    const mediaEl = document.getElementById('modal-media');
-    mediaEl.innerHTML = '';
-    if (ev.media && ev.media.length > 0) {
-      ev.media.forEach(m => {
-        const img = document.createElement('img');
-        img.src = '/' + m.stored_path;
-        img.className = 'media-img';
-        mediaEl.appendChild(img);
-      });
-    }
-
-    document.getElementById('event-modal').style.display = 'flex';
-  } catch (err) {
-    console.error('Failed to show event detail:', err);
-  }
-}
-
-function closeModal() {
-  document.getElementById('event-modal').style.display = 'none';
-}
-
-// -----------------------------------------------------------------------------
-// Life Navigation Domain Loaders
-// -----------------------------------------------------------------------------
-
-async function loadProjects(status = '') {
-  const listEl = document.getElementById('projects-list');
-  const countEl = document.getElementById('projects-count');
-  if (!listEl) return;
-  listEl.innerHTML = '<div style="color:var(--text-muted); padding:20px;">Loading projects...</div>';
-  try {
-    const url = status ? `/api/projects?status=${encodeURIComponent(status)}` : '/api/projects';
-    const res = await fetch(url);
-    const data = await res.json();
-    countEl.innerText = `${data.total} initiatives`;
-    if (!data.items || data.items.length === 0) {
-      listEl.innerHTML = '<div style="color:var(--text-muted); padding:20px;">No projects found. Add one with <code>uv run ierp insert-project</code></div>';
-      return;
-    }
-    listEl.innerHTML = data.items.map(p => `
-      <div class="contact-card">
+    <div class="contacts-grid">
+      <div v-for="c in collections.contacts.items" :key="c.id" class="contact-card">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
-          <div class="contact-name">${escapeHtml(p.title)}</div>
-          <span class="status-pill status-${p.status}">${p.status.toUpperCase()}</span>
+          <div class="contact-name">{{ c.name }}</div>
+          <span :style="{
+            fontSize: '10px',
+            fontWeight: '700',
+            padding: '2px 8px',
+            borderRadius: '10px',
+            background: 'rgba(255,255,255,0.06)',
+            color: c.source === 'google' ? 'var(--accent-green)' : (c.source === 'merged' ? 'var(--accent-pink)' : 'var(--accent-blue)'),
+            border: '1px solid ' + (c.source === 'google' ? 'var(--accent-green)' : (c.source === 'merged' ? 'var(--accent-pink)' : 'var(--accent-blue)'))
+          }">
+            {{ (c.source || 'manual').toUpperCase() }}
+          </span>
+        </div>
+        <div v-if="c.org" class="contact-org">🏢 {{ c.org }} <span v-if="c.client">({{ c.client }})</span></div>
+        <div v-if="c.email" style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">✉️ {{ c.email }}</div>
+        <div v-if="c.phone" style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">📞 {{ c.phone }}</div>
+        <div v-if="c.location" style="font-size:13px; color:var(--text-muted); margin-bottom:8px;">📍 {{ c.location }}</div>
+        <div class="contact-badge">{{ c.event_count || 0 }} Linked Events</div>
+      </div>
+      <div v-if="collections.contacts.items.length === 0 && !collections.contacts.loading" style="color:var(--text-muted); text-align:center; padding:40px; grid-column: 1 / -1;">
+        No contacts found matching search criteria.
+      </div>
+    </div>
+
+    <div id="contacts-sentinel" class="scroll-sentinel"></div>
+    <div class="load-more-wrap">
+      <button v-if="collections.contacts.hasMore" class="load-more-btn" :disabled="collections.contacts.loading" @click="fetchMore('contacts')">
+        {{ collections.contacts.loading ? '⏳ Loading more contacts...' : `Load More (${collections.contacts.total - collections.contacts.items.length} remaining)` }}
+      </button>
+      <div v-else-if="collections.contacts.total > 0" class="end-indicator">✓ All {{ collections.contacts.total }} contacts loaded</div>
+    </div>
+  </div>
+
+  <!-- PROJECTS TAB -->
+  <div id="tab-projects" v-if="activeTab === 'projects'">
+    <div class="toolbar-section">
+      <div class="filter-row">
+        <div class="filter-group">
+          <button :class="['tag-pill', { active: projects.status === '' }]" @click="loadProjects('')">All Status</button>
+          <button :class="['tag-pill', { active: projects.status === 'active' }]" @click="loadProjects('active')">Active</button>
+          <button :class="['tag-pill', { active: projects.status === 'paused' }]" @click="loadProjects('paused')">Paused</button>
+          <button :class="['tag-pill', { active: projects.status === 'completed' }]" @click="loadProjects('completed')">Completed</button>
+        </div>
+        <span class="count-badge">{{ projects.total }} initiatives</span>
+      </div>
+    </div>
+    <div class="contacts-grid">
+      <div v-for="p in projects.items" :key="p.id" class="contact-card">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+          <div class="contact-name">{{ p.title }}</div>
+          <span :class="['status-pill', 'status-' + p.status]">{{ (p.status || '').toUpperCase() }}</span>
         </div>
         <div style="font-size:12.5px; color:var(--accent-purple); font-family:'JetBrains Mono', monospace; margin-bottom:8px;">
-          ${p.slug} | Priority: <strong>${p.priority.toUpperCase()}</strong>
+          {{ p.slug }} | Priority: <strong>{{ (p.priority || 'medium').toUpperCase() }}</strong>
         </div>
         <div style="font-size:13px; color:var(--text-muted); margin-bottom:12px; line-height:1.4;">
-          ${escapeHtml(p.description || 'No description')}
+          {{ p.description || 'No description' }}
         </div>
         <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--accent-cyan); border-top:1px solid var(--card-border); padding-top:10px;">
-          <span>📅 ${p.start_date || 'N/A'} → ${p.target_date || 'Ongoing'}</span>
-          <span>🔗 ${p.event_count} events | ⚖️ ${p.decision_count} decisions</span>
+          <span>📅 {{ p.start_date || 'N/A' }} → {{ p.target_date || 'Ongoing' }}</span>
+          <span>🔗 {{ p.event_count || 0 }} events | ⚖️ {{ p.decision_count || 0 }} decisions</span>
         </div>
       </div>
-    `).join('');
-  } catch(e) {
-    listEl.innerHTML = `<div style="color:var(--accent-pink);">Failed to load projects: ${e.message}</div>`;
-  }
-}
+      <div v-if="projects.items.length === 0 && !projects.loading" style="color:var(--text-muted); padding:30px; grid-column: 1 / -1; text-align:center;">
+        No projects found. Add one with <code>uv run ierp insert-project</code>
+      </div>
+    </div>
+  </div>
 
-function filterProjects(status, btn) {
-  document.querySelectorAll('#tab-projects .tag-pill').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-  loadProjects(status);
-}
-
-async function loadDecisions(status = '') {
-  const listEl = document.getElementById('decisions-list');
-  const countEl = document.getElementById('decisions-count');
-  if (!listEl) return;
-  listEl.innerHTML = '<div style="color:var(--text-muted); padding:20px;">Loading decisions...</div>';
-  try {
-    const url = status ? `/api/decisions?status=${encodeURIComponent(status)}` : '/api/decisions';
-    const res = await fetch(url);
-    const data = await res.json();
-    countEl.innerText = `${data.total} decisions`;
-    if (!data.items || data.items.length === 0) {
-      listEl.innerHTML = '<div style="color:var(--text-muted); padding:20px;">No decisions logged. Record one with <code>uv run ierp insert-decision</code></div>';
-      return;
-    }
-    listEl.innerHTML = data.items.map(d => `
-      <div class="event-card">
+  <!-- DECISIONS TAB -->
+  <div id="tab-decisions" v-if="activeTab === 'decisions'">
+    <div class="toolbar-section">
+      <div class="filter-row">
+        <div class="filter-group">
+          <button :class="['tag-pill', { active: decisions.status === '' }]" @click="loadDecisions('')">All Decisions</button>
+          <button :class="['tag-pill', { active: decisions.status === 'pending' }]" @click="loadDecisions('pending')">Pending</button>
+          <button :class="['tag-pill', { active: decisions.status === 'reviewed' }]" @click="loadDecisions('reviewed')">Reviewed</button>
+        </div>
+        <span class="count-badge">{{ decisions.total }} decisions</span>
+      </div>
+    </div>
+    <div class="events-grid">
+      <div v-for="d in decisions.items" :key="d.id" class="event-card">
         <div class="event-header">
-          <div class="event-title">⚖️ ${escapeHtml(d.title)}</div>
+          <div class="event-title">⚖️ {{ d.title }}</div>
           <div style="display:flex; gap:8px; align-items:center;">
-            <span class="count-badge" style="color:var(--accent-amber);">Confidence: ${d.confidence}/10</span>
-            <span class="status-pill status-${d.status}">${d.status.toUpperCase()}</span>
+            <span class="count-badge" style="color:var(--accent-amber);">Confidence: {{ d.confidence }}/10</span>
+            <span :class="['status-pill', 'status-' + d.status]">{{ (d.status || '').toUpperCase() }}</span>
           </div>
         </div>
         <div class="event-meta">
-          <span class="meta-item">🎯 Project: <strong>${escapeHtml(d.project_title || 'General')}</strong></span>
-          <span class="meta-item">📅 Review Due: <strong>${d.review_date || 'Unscheduled'}</strong></span>
+          <span class="meta-item">🎯 Project: <strong>{{ d.project_title || 'General' }}</strong></span>
+          <span class="meta-item">📅 Review Due: <strong>{{ d.review_date || 'Unscheduled' }}</strong></span>
         </div>
         <div style="font-size:13.5px; color:var(--text-main); margin-bottom:8px;">
-          <strong>Choice Made:</strong> ${escapeHtml(d.choice)}
+          <strong>Choice Made:</strong> {{ d.choice }}
         </div>
-        ${d.expected_outcome ? `<div style="font-size:13px; color:var(--text-muted); margin-bottom:6px;"><strong>Hypothesis:</strong> ${escapeHtml(d.expected_outcome)}</div>` : ''}
-        ${d.actual_outcome ? `<div style="font-size:13px; color:var(--accent-green); padding:8px; background:rgba(16,185,129,0.08); border-radius:8px; margin-top:8px;"><strong>Actual Result:</strong> ${escapeHtml(d.actual_outcome)}</div>` : ''}
+        <div v-if="d.expected_outcome" style="font-size:13px; color:var(--text-muted); margin-bottom:6px;">
+          <strong>Hypothesis:</strong> {{ d.expected_outcome }}
+        </div>
+        <div v-if="d.actual_outcome" style="font-size:13px; color:var(--accent-green); padding:8px; background:rgba(16,185,129,0.08); border-radius:8px; margin-top:8px;">
+          <strong>Actual Result:</strong> {{ d.actual_outcome }}
+        </div>
       </div>
-    `).join('');
-  } catch(e) {
-    listEl.innerHTML = `<div style="color:var(--accent-pink);">Failed to load decisions: ${e.message}</div>`;
-  }
-}
+      <div v-if="decisions.items.length === 0 && !decisions.loading" style="color:var(--text-muted); padding:30px; grid-column: 1 / -1; text-align:center;">
+        No decisions logged. Record one with <code>uv run ierp insert-decision</code>
+      </div>
+    </div>
+  </div>
 
-function filterDecisions(status, btn) {
-  document.querySelectorAll('#tab-decisions .tag-pill').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-  loadDecisions(status);
-}
-
-let radarTierFilter = '';
-let radarOverdueOnly = false;
-async function loadRadar(tier = '', overdueOnly = false) {
-  radarTierFilter = tier;
-  radarOverdueOnly = overdueOnly;
-  const listEl = document.getElementById('radar-list');
-  const countEl = document.getElementById('radar-count');
-  if (!listEl) return;
-  listEl.innerHTML = '<div style="color:var(--text-muted); padding:20px;">Calculating relationship radar...</div>';
-  try {
-    let url = `/api/radar?limit=100`;
-    if (tier) url += `&tier=${tier}`;
-    if (overdueOnly) url += `&overdue_only=true`;
-    const res = await fetch(url);
-    const data = await res.json();
-    countEl.innerText = `${data.total} contacts evaluated`;
-    if (!data.items || data.items.length === 0) {
-      listEl.innerHTML = '<div style="color:var(--accent-green); padding:20px;">All relationships are in good cadence! 🎉</div>';
-      return;
-    }
-    listEl.innerHTML = data.items.map(c => `
-      <div class="contact-card" style="${c.is_overdue ? 'border-color: rgba(239, 68, 68, 0.4);' : ''}">
+  <!-- RADAR TAB -->
+  <div id="tab-radar" v-if="activeTab === 'radar'">
+    <div class="toolbar-section">
+      <div class="filter-row">
+        <div class="filter-group">
+          <button :class="['tag-pill', { active: radar.tier === '' }]" @click="filterRadarTier('')">All Tiers</button>
+          <button :class="['tag-pill', { active: radar.tier === '1' }]" @click="filterRadarTier('1')">Tier 1 (Inner)</button>
+          <button :class="['tag-pill', { active: radar.tier === '2' }]" @click="filterRadarTier('2')">Tier 2 (Core)</button>
+          <button :class="['tag-pill', { active: radar.tier === '3' }]" @click="filterRadarTier('3')">Tier 3 (Broad)</button>
+          <button :class="['tag-pill', { active: radar.overdueOnly }]" 
+                  style="border-color:var(--accent-amber); color:var(--accent-amber);" 
+                  @click="toggleRadarOverdue">⚠️ Overdue Only</button>
+        </div>
+        <span class="count-badge">{{ radar.total }} contacts evaluated</span>
+      </div>
+    </div>
+    <div class="contacts-grid">
+      <div v-for="c in radar.items" :key="c.id" 
+           class="contact-card" 
+           :style="c.is_overdue ? { borderColor: 'rgba(239, 68, 68, 0.4)' } : {}">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
-          <div class="contact-name">${escapeHtml(c.name)}</div>
-          <span class="status-pill" style="${c.is_overdue ? 'background:rgba(239,68,68,0.15); color:var(--accent-pink);' : 'background:rgba(16,185,129,0.15); color:var(--accent-green);'}">
-            ${c.is_overdue ? `${c.days_overdue}d OVERDUE` : 'ACTIVE'}
+          <div class="contact-name">{{ c.name }}</div>
+          <span class="status-pill" :style="{
+            background: c.is_overdue ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)',
+            color: c.is_overdue ? 'var(--accent-pink)' : 'var(--accent-green)'
+          }">
+            {{ c.is_overdue ? `${c.days_overdue}d OVERDUE` : 'ACTIVE' }}
           </span>
         </div>
-        <div class="contact-org">${escapeHtml(c.org || c.email || 'Personal')}</div>
+        <div class="contact-org">{{ c.org || c.email || 'Personal' }}</div>
         <div style="display:flex; gap:8px; margin-bottom:10px; font-size:12px;">
-          <span class="count-badge">Tier ${c.tier}</span>
-          <span class="count-badge" style="color:var(--text-muted);">Cadence: ${c.cadence_days}d</span>
-          <span class="count-badge" style="color:var(--accent-purple);">Interactions: ${c.total_interactions}</span>
+          <span class="count-badge">Tier {{ c.tier }}</span>
+          <span class="count-badge" style="color:var(--text-muted);">Cadence: {{ c.cadence_days }}d</span>
+          <span class="count-badge" style="color:var(--accent-purple);">Interactions: {{ c.total_interactions }}</span>
         </div>
         <div style="font-size:12.5px; color:var(--text-muted); border-top:1px solid var(--card-border); padding-top:8px;">
-          Last Touch: <strong>${c.last_seen_date ? c.last_seen_date.substring(0, 10) : 'Never'}</strong> (${c.days_since_last_touch < 999 ? c.days_since_last_touch + ' days ago' : 'No logged events'})
+          Last Touch: <strong>{{ c.last_seen_date ? c.last_seen_date.substring(0, 10) : 'Never' }}</strong> 
+          ({{ c.days_since_last_touch < 999 ? c.days_since_last_touch + ' days ago' : 'No logged events' }})
         </div>
       </div>
-    `).join('');
-  } catch(e) {
-    listEl.innerHTML = `<div style="color:var(--accent-pink);">Failed to load radar: ${e.message}</div>`;
-  }
-}
+      <div v-if="radar.items.length === 0 && !radar.loading" style="color:var(--accent-green); padding:30px; grid-column: 1 / -1; text-align:center;">
+        All relationships are in good cadence! 🎉
+      </div>
+    </div>
+  </div>
 
-function filterRadar(tier, btn) {
-  document.querySelectorAll('#tab-radar .tag-pill').forEach(b => {
-    if (b.id !== 'btn-overdue-toggle') b.classList.remove('active');
-  });
-  if (btn) btn.classList.add('active');
-  loadRadar(tier, radarOverdueOnly);
-}
+  <!-- LIFE OPS TAB -->
+  <div id="tab-lifeops" v-if="activeTab === 'lifeops'">
+    <div class="stats-grid" style="margin-bottom:20px;">
+      <div class="stat-card">
+        <div class="stat-label">Freedom Runway</div>
+        <div class="stat-value" style="color:var(--accent-cyan); font-size:26px;">{{ lifeops.runway }}</div>
+        <div class="stat-icon">🛡️</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Monthly Burn</div>
+        <div class="stat-value" style="color:var(--accent-pink); font-size:24px;">{{ lifeops.burn }}</div>
+        <div class="stat-icon">🔥</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Liquid Capital</div>
+        <div class="stat-value" style="color:var(--accent-green); font-size:24px;">{{ lifeops.liquid }}</div>
+        <div class="stat-icon">💧</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Net Worth</div>
+        <div class="stat-value" style="font-size:24px;">{{ lifeops.networth }}</div>
+        <div class="stat-icon">💎</div>
+      </div>
+    </div>
+    
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px; margin-bottom:25px;">
+      <div class="panel">
+        <div class="panel-title"><span>🛠️ Maintenance & Expirations</span></div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div v-for="m in lifeops.maintenance" 
+               style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:rgba(255,255,255,0.02); border:1px solid var(--card-border); border-radius:10px;">
+            <div>
+              <div style="font-size:14px; font-weight:600; color:#fff;">{{ m.name }}</div>
+              <div style="font-size:12px; color:var(--text-muted);">{{ (m.category || '').toUpperCase() }} | Due: <strong>{{ m.due_date }}</strong></div>
+            </div>
+            <span class="status-pill" :style="{
+              background: m.is_overdue ? 'rgba(239,68,68,0.15)' : 'rgba(79,172,254,0.15)',
+              color: m.is_overdue ? 'var(--accent-pink)' : 'var(--accent-cyan)'
+            }">
+              {{ m.is_overdue ? 'OVERDUE' : (m.status || '').toUpperCase() }}
+            </span>
+          </div>
+          <div v-if="lifeops.maintenance.length === 0" style="color:var(--text-muted); font-size:13px;">
+            No upcoming maintenance. Schedule with <code>uv run ierp insert-maintenance</code>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title"><span>🔄 Sprint Retrospectives</span></div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div v-for="r in lifeops.reviews" 
+               style="padding:12px; background:rgba(255,255,255,0.02); border:1px solid var(--card-border); border-radius:10px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+              <span style="font-weight:600; font-size:13.5px; color:var(--accent-cyan);">{{ r.period_start }} → {{ r.period_end }}</span>
+              <span class="count-badge" style="color:var(--accent-amber);">Rating: {{ r.rating }}/10</span>
+            </div>
+            <div v-if="r.wins" style="font-size:12.5px; color:var(--accent-green); margin-bottom:4px;">✨ <strong>Wins:</strong> {{ r.wins }}</div>
+            <div v-if="r.focus_next" style="font-size:12.5px; color:var(--accent-purple);">🎯 <strong>Focus:</strong> {{ r.focus_next }}</div>
+          </div>
+          <div v-if="lifeops.reviews.length === 0" style="color:var(--text-muted); font-size:13px;">
+            No sprint retrospectives logged. Log with <code>uv run ierp insert-review</code>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-function toggleRadarOverdue(btn) {
-  radarOverdueOnly = !radarOverdueOnly;
-  if (radarOverdueOnly) {
-    btn.classList.add('active');
-  } else {
-    btn.classList.remove('active');
-  }
-  loadRadar(radarTierFilter, radarOverdueOnly);
-}
+  <!-- MEDIA LOGS TAB -->
+  <div id="tab-media" v-if="activeTab === 'media'">
+    <div class="toolbar-section">
+      <div class="filter-row">
+        <div class="filter-group">
+          <button :class="['tag-pill', { active: collections.media.mediaType === '' }]" @click="filterByMediaType('')">All Media</button>
+          <button :class="['tag-pill', { active: collections.media.mediaType === 'book' }]" @click="filterByMediaType('book')">📚 Books</button>
+          <button :class="['tag-pill', { active: collections.media.mediaType === 'film' }]" @click="filterByMediaType('film')">🎬 Films</button>
+          <button :class="['tag-pill', { active: collections.media.mediaType === 'anime' }]" @click="filterByMediaType('anime')">⛩️ Anime</button>
+          <button :class="['tag-pill', { active: collections.media.mediaType === 'manga' }]" @click="filterByMediaType('manga')">📖 Manga</button>
+          <button :class="['tag-pill', { active: collections.media.mediaType === 'drama' }]" @click="filterByMediaType('drama')">🎭 Dramas</button>
+        </div>
+      </div>
+      <div class="filter-row">
+        <div class="search-input-wrap">
+          <input type="text" 
+                 v-model="collections.media.search" 
+                 class="search-input" 
+                 placeholder="Search media by title, author, source, notes..." 
+                 @input="onSearchInput('media')">
+        </div>
+      </div>
+      <div class="filter-row">
+        <div class="sort-bar">
+          <span>Sort by:</span>
+          <button :class="['sort-btn', { active: collections.media.sort === 'id' }]" @click="setSort('media', 'id')">
+            Latest <span class="sort-dir">{{ collections.media.sort === 'id' ? (collections.media.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+          <button :class="['sort-btn', { active: collections.media.sort === 'title' }]" @click="setSort('media', 'title')">
+            Title <span class="sort-dir">{{ collections.media.sort === 'title' ? (collections.media.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+          <button :class="['sort-btn', { active: collections.media.sort === 'rating' }]" @click="setSort('media', 'rating')">
+            Rating <span class="sort-dir">{{ collections.media.sort === 'rating' ? (collections.media.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+          <button :class="['sort-btn', { active: collections.media.sort === 'date' }]" @click="setSort('media', 'date')">
+            Date Logged <span class="sort-dir">{{ collections.media.sort === 'date' ? (collections.media.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+          <button :class="['sort-btn', { active: collections.media.sort === 'media_type' }]" @click="setSort('media', 'media_type')">
+            Type <span class="sort-dir">{{ collections.media.sort === 'media_type' ? (collections.media.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+        </div>
+        <div class="filter-group">
+          <span class="count-badge">Showing {{ collections.media.items.length }} of {{ collections.media.total }}</span>
+          <select class="control-select" :value="collections.media.limit" @change="changeLimit('media', $event)">
+            <option value="12">12 / page</option>
+            <option value="24">24 / page</option>
+            <option value="48">48 / page</option>
+            <option value="96">96 / page</option>
+          </select>
+        </div>
+      </div>
+    </div>
 
-async function loadLifeOps() {
-  try {
-    const rwRes = await fetch('/api/runway');
-    const rw = await rwRes.json();
-    document.getElementById('lo-runway').innerText = rw.is_infinite ? '∞ Months' : `${rw.runway_months} Months`;
-    document.getElementById('lo-burn').innerText = 'Rp' + (rw.monthly_burn || 0).toLocaleString('id-ID');
-    document.getElementById('lo-liquid').innerText = 'Rp' + (rw.liquid_cash || 0).toLocaleString('id-ID');
-    document.getElementById('lo-networth').innerText = 'Rp' + (rw.net_worth || 0).toLocaleString('id-ID');
+    <div class="media-grid">
+      <div v-for="m in collections.media.items" :key="m.id" class="media-card">
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span class="media-type-badge">{{ getMediaIcon(m.media_type) }}</span>
+            <span style="font-size:11px; color:var(--text-muted);">{{ m.source || '' }}</span>
+          </div>
+          <div class="media-title">{{ m.title }}</div>
+          <div v-if="m.author" style="font-size:13px; color:var(--text-muted); margin-top:4px;">By {{ m.author }}</div>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--card-border); padding-top:10px; margin-top:6px;">
+          <div style="display:flex; gap:8px; align-items:center;">
+            <span v-if="m.status" style="font-size:11px; padding:2px 8px; border-radius:6px; background:rgba(255,255,255,0.06); color:var(--accent-cyan); text-transform:capitalize;">{{ m.status }}</span>
+            <span v-if="m.rating != null" class="media-rating">⭐ {{ typeof m.rating === 'number' ? m.rating.toFixed(1) : m.rating }}</span>
+          </div>
+          <span style="font-size:12px; color:var(--text-muted); font-family:'JetBrains Mono',monospace;">{{ m.date || '' }}</span>
+        </div>
+      </div>
+      <div v-if="collections.media.items.length === 0 && !collections.media.loading" style="color:var(--text-muted); text-align:center; padding:40px; grid-column: 1 / -1;">
+        No media records found matching criteria.
+      </div>
+    </div>
 
-    const mRes = await fetch('/api/maintenance?limit=10');
-    const mData = await mRes.json();
-    const mList = document.getElementById('maintenance-list');
-    if (!mData.items || mData.items.length === 0) {
-      mList.innerHTML = '<div style="color:var(--text-muted); font-size:13px;">No upcoming maintenance. Schedule with <code>uv run ierp insert-maintenance</code></div>';
-    } else {
-      mList.innerHTML = mData.items.map(m => `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:rgba(255,255,255,0.02); border:1px solid var(--card-border); border-radius:10px;">
+    <div id="media-sentinel" class="scroll-sentinel"></div>
+    <div class="load-more-wrap">
+      <button v-if="collections.media.hasMore" class="load-more-btn" :disabled="collections.media.loading" @click="fetchMore('media')">
+        {{ collections.media.loading ? '⏳ Loading more media...' : `Load More (${collections.media.total - collections.media.items.length} remaining)` }}
+      </button>
+      <div v-else-if="collections.media.total > 0" class="end-indicator">✓ All {{ collections.media.total }} items loaded</div>
+    </div>
+  </div>
+
+  <!-- VENDORS TAB -->
+  <div id="tab-vendors" v-if="activeTab === 'vendors'">
+    <div class="toolbar-section">
+      <div class="filter-row">
+        <div class="filter-group">
+          <button :class="['tag-pill', { active: collections.vendors.favoriteOnly }]" @click="toggleVendorFavFilter">★ Favorites Only</button>
+          <select class="control-select" :value="collections.vendors.category" @change="onVendorCategoryChange">
+            <option value="">All Categories</option>
+            <option v-for="cat in collections.vendors.categories" :value="cat">{{ cat }}</option>
+          </select>
+        </div>
+        <div class="search-input-wrap">
+          <input type="text" 
+                 v-model="collections.vendors.search" 
+                 class="search-input" 
+                 placeholder="Search vendors by name, category, location, notes, phone..." 
+                 @input="onSearchInput('vendors')">
+        </div>
+      </div>
+      <div class="filter-row">
+        <div class="sort-bar">
+          <span>Sort by:</span>
+          <button :class="['sort-btn', { active: collections.vendors.sort === 'favorite' }]" @click="setSort('vendors', 'favorite')">
+            Favorites First <span class="sort-dir">{{ collections.vendors.sort === 'favorite' ? (collections.vendors.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+          <button :class="['sort-btn', { active: collections.vendors.sort === 'name' }]" @click="setSort('vendors', 'name')">
+            Name <span class="sort-dir">{{ collections.vendors.sort === 'name' ? (collections.vendors.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+          <button :class="['sort-btn', { active: collections.vendors.sort === 'category' }]" @click="setSort('vendors', 'category')">
+            Category <span class="sort-dir">{{ collections.vendors.sort === 'category' ? (collections.vendors.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+          <button :class="['sort-btn', { active: collections.vendors.sort === 'location' }]" @click="setSort('vendors', 'location')">
+            Location <span class="sort-dir">{{ collections.vendors.sort === 'location' ? (collections.vendors.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+        </div>
+        <div class="filter-group">
+          <span class="count-badge">Showing {{ collections.vendors.items.length }} of {{ collections.vendors.total }}</span>
+          <select class="control-select" :value="collections.vendors.limit" @change="changeLimit('vendors', $event)">
+            <option value="12">12 / page</option>
+            <option value="24">24 / page</option>
+            <option value="48">48 / page</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="vendors-grid">
+      <div v-for="v in collections.vendors.items" :key="v.id" class="vendor-card">
+        <div class="vendor-header">
           <div>
-            <div style="font-size:14px; font-weight:600; color:#fff;">${escapeHtml(m.name)}</div>
-            <div style="font-size:12px; color:var(--text-muted);">${m.category.toUpperCase()} | Due: <strong>${m.due_date}</strong></div>
+            <div class="vendor-name">{{ v.name }}</div>
+            <span style="display:inline-block; font-size:11px; color:var(--accent-purple); background:rgba(138,43,226,0.1); border:1px solid rgba(138,43,226,0.25); padding:2px 8px; border-radius:8px; margin-top:4px;">{{ v.category || 'General' }}</span>
           </div>
-          <span class="status-pill" style="${m.is_overdue ? 'background:rgba(239,68,68,0.15); color:var(--accent-pink);' : 'background:rgba(79,172,254,0.15); color:var(--accent-cyan);'}">
-            ${m.is_overdue ? 'OVERDUE' : m.status.toUpperCase()}
-          </span>
+          <button :class="['fav-btn', { 'is-fav': Boolean(v.favorite) }]" 
+                  :title="v.favorite ? 'Remove Favorite' : 'Mark Favorite'" 
+                  @click="toggleVendorFavorite(v.id, $event)">★</button>
         </div>
-      `).join('');
-    }
+        <div v-if="v.location" style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">📍 {{ v.location }}</div>
+        <div v-if="v.phone" style="font-size:13px; color:var(--accent-cyan); margin-bottom:4px;">📞 {{ v.phone }}</div>
+        <div v-if="v.email" style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">✉️ {{ v.email }}</div>
+        <div v-if="v.notes" style="font-size:13.5px; color:var(--text-muted); margin-top:8px; line-height:1.4;">{{ v.notes }}</div>
+      </div>
+      <div v-if="collections.vendors.items.length === 0 && !collections.vendors.loading" style="color:var(--text-muted); text-align:center; padding:40px; grid-column: 1 / -1;">
+        No vendors found matching search criteria.
+      </div>
+    </div>
 
-    const rRes = await fetch('/api/reviews?limit=5');
-    const rData = await rRes.json();
-    const rList = document.getElementById('reviews-list');
-    if (!rData.items || rData.items.length === 0) {
-      rList.innerHTML = '<div style="color:var(--text-muted); font-size:13px;">No sprint retrospectives logged. Log with <code>uv run ierp insert-review</code></div>';
-    } else {
-      rList.innerHTML = rData.items.map(r => `
-        <div style="padding:12px; background:rgba(255,255,255,0.02); border:1px solid var(--card-border); border-radius:10px;">
-          <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-            <span style="font-weight:600; font-size:13.5px; color:var(--accent-cyan);">${r.period_start} → ${r.period_end}</span>
-            <span class="count-badge" style="color:var(--accent-amber);">Rating: ${r.rating}/10</span>
+    <div id="vendors-sentinel" class="scroll-sentinel"></div>
+    <div class="load-more-wrap">
+      <button v-if="collections.vendors.hasMore" class="load-more-btn" :disabled="collections.vendors.loading" @click="fetchMore('vendors')">
+        {{ collections.vendors.loading ? '⏳ Loading more vendors...' : `Load More (${collections.vendors.total - collections.vendors.items.length} remaining)` }}
+      </button>
+      <div v-else-if="collections.vendors.total > 0" class="end-indicator">✓ All {{ collections.vendors.total }} vendors loaded</div>
+    </div>
+  </div>
+
+  <!-- LINKS TAB -->
+  <div id="tab-links" v-if="activeTab === 'links'">
+    <div class="toolbar-section">
+      <div class="filter-row">
+        <div class="filter-group">
+          <button :class="['tag-pill', { active: collections.links.category === '' }]" @click="filterLinksCategory('')">All Links</button>
+          <button v-for="cat in collections.links.categories" 
+                  :class="['tag-pill', { active: collections.links.category === cat }]" 
+                  @click="filterLinksCategory(cat)">{{ cat }}</button>
+        </div>
+        <div class="search-input-wrap">
+          <input type="text" 
+                 v-model="collections.links.search" 
+                 class="search-input" 
+                 placeholder="Search links by label, URL, category, notes..." 
+                 @input="onSearchInput('links')">
+        </div>
+      </div>
+      <div class="filter-row">
+        <div class="sort-bar">
+          <span>Sort by:</span>
+          <button :class="['sort-btn', { active: collections.links.sort === 'category' }]" @click="setSort('links', 'category')">
+            Category <span class="sort-dir">{{ collections.links.sort === 'category' ? (collections.links.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+          <button :class="['sort-btn', { active: collections.links.sort === 'label' }]" @click="setSort('links', 'label')">
+            Label <span class="sort-dir">{{ collections.links.sort === 'label' ? (collections.links.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+          <button :class="['sort-btn', { active: collections.links.sort === 'created_at' }]" @click="setSort('links', 'created_at')">
+            Created <span class="sort-dir">{{ collections.links.sort === 'created_at' ? (collections.links.dir === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+        </div>
+        <div class="filter-group">
+          <span class="count-badge">Showing {{ collections.links.items.length }} of {{ collections.links.total }}</span>
+          <select class="control-select" :value="collections.links.limit" @change="changeLimit('links', $event)">
+            <option value="12">12 / page</option>
+            <option value="24">24 / page</option>
+            <option value="48">48 / page</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="links-grid">
+      <div v-for="l in collections.links.items" :key="l.id" class="link-card">
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <strong style="font-size:15px; color:#fff;">{{ l.label }}</strong>
+            <span style="font-size:10.5px; padding:2px 6px; border-radius:6px; background:rgba(255,255,255,0.06); color:var(--accent-purple); text-transform:uppercase;">{{ l.category || 'Link' }}</span>
           </div>
-          ${r.wins ? `<div style="font-size:12.5px; color:var(--accent-green); margin-bottom:4px;">✨ <strong>Wins:</strong> ${escapeHtml(r.wins)}</div>` : ''}
-          ${r.focus_next ? `<div style="font-size:12.5px; color:var(--accent-purple);">🎯 <strong>Focus:</strong> ${escapeHtml(r.focus_next)}</div>` : ''}
+          <a :href="l.url" target="_blank" rel="noopener noreferrer" class="link-url">
+            {{ l.url }} ↗
+          </a>
         </div>
-      `).join('');
-    }
-  } catch(e) {
-    console.error('Failed to load life ops:', e);
-  }
-}
+        <div v-if="l.notes" style="font-size:13px; color:var(--text-muted); margin-top:6px;">{{ l.notes }}</div>
+      </div>
+      <div v-if="collections.links.items.length === 0 && !collections.links.loading" style="color:var(--text-muted); text-align:center; padding:40px; grid-column: 1 / -1;">
+        No links found matching search criteria.
+      </div>
+    </div>
 
-// Main Tab Navigation
-function switchTab(tabName, evt) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  if (evt && evt.target) {
-    const targetBtn = evt.target.closest('.tab-btn') || evt.target;
-    targetBtn.classList.add('active');
-  }
-  
-  const allTabs = ['overview', 'events', 'contacts', 'projects', 'decisions', 'radar', 'lifeops', 'media', 'vendors', 'links', 'commerce', 'receipts'];
-  allTabs.forEach(t => {
-    const el = document.getElementById(`tab-${t}`);
-    if (el) el.style.display = t === tabName ? 'block' : 'none';
-  });
+    <div id="links-sentinel" class="scroll-sentinel"></div>
+    <div class="load-more-wrap">
+      <button v-if="collections.links.hasMore" class="load-more-btn" :disabled="collections.links.loading" @click="fetchMore('links')">
+        {{ collections.links.loading ? '⏳ Loading more links...' : `Load More (${collections.links.total - collections.links.items.length} remaining)` }}
+      </button>
+      <div v-else-if="collections.links.total > 0" class="end-indicator">✓ All {{ collections.links.total }} links loaded</div>
+    </div>
+  </div>
 
-  if (tabName === 'projects') {
-    loadProjects();
-  } else if (tabName === 'decisions') {
-    loadDecisions();
-  } else if (tabName === 'radar') {
-    loadRadar();
-  } else if (tabName === 'lifeops') {
-    loadLifeOps();
-  } else if (tabName !== 'overview') {
-    const targetKey = tabName === 'commerce' ? 'payments' : tabName;
-    if (tabStates[targetKey] && tabStates[targetKey].items.length === 0) {
-      resetAndFetch(targetKey);
-    }
-    if (tabStates[targetKey]) {
-      initIntersectionObserver(targetKey);
-    }
-  }
-}
+  <!-- COMMERCE TAB (PAYMENT ACCOUNTS + REFERRALS) -->
+  <div id="tab-commerce" v-if="activeTab === 'commerce'">
+    <div class="commerce-subtabs">
+      <button :class="['subtab-btn', { active: commerceSubtab === 'payments' }]" @click="switchCommerceSubtab('payments')">💳 Payment Accounts</button>
+      <button :class="['subtab-btn', { active: commerceSubtab === 'referrals' }]" @click="switchCommerceSubtab('referrals')">🎁 Referral Codes</button>
+    </div>
 
-// Infinite Scroll Observer Setup
-function initIntersectionObserver(tabKey) {
-  const sentinelId = tabStates[tabKey].sentinelId;
-  const sentinel = document.getElementById(sentinelId);
-  if (!sentinel) return;
+    <!-- Payments Sub-view -->
+    <div id="view-payments" v-if="commerceSubtab === 'payments'">
+      <div class="toolbar-section">
+        <div class="filter-row">
+          <div class="search-input-wrap">
+            <input type="text" 
+                   v-model="collections.payments.search" 
+                   class="search-input" 
+                   placeholder="Search payment rails by bank name, recipient, number, details..." 
+                   @input="onSearchInput('payments')">
+          </div>
+          <div class="filter-group">
+            <span class="count-badge">Showing {{ collections.payments.items.length }} of {{ collections.payments.total }}</span>
+            <select class="control-select" :value="collections.payments.limit" @change="changeLimit('payments', $event)">
+              <option value="12">12 / page</option>
+              <option value="24">24 / page</option>
+              <option value="48">48 / page</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="commerce-grid">
+        <div v-for="p in collections.payments.items" :key="p.id" class="commerce-card">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+            <strong style="font-size:16px; color:#fff;">{{ p.name }}</strong>
+            <span style="font-size:11px; padding:2px 8px; border-radius:8px; background:rgba(79,172,254,0.12); color:var(--accent-blue);">{{ p.category || 'Bank' }}</span>
+          </div>
+          <div style="font-size:13px; color:var(--text-muted); margin-bottom:6px;">Recipient: <strong style="color:var(--text-main);">{{ p.recipient || 'Personal' }}</strong></div>
+          <div v-if="p.number" class="copy-box">
+            <span>{{ p.number }}</span>
+            <button class="copy-btn" @click="copyText(p.number, $event)">Copy</button>
+          </div>
+          <div v-if="p.details" style="font-size:13px; color:var(--text-muted); margin-top:6px;">{{ p.details }}</div>
+        </div>
+        <div v-if="collections.payments.items.length === 0 && !collections.payments.loading" style="color:var(--text-muted); text-align:center; padding:40px; grid-column: 1 / -1;">
+          No payment accounts found.
+        </div>
+      </div>
+      <div id="payments-sentinel" class="scroll-sentinel"></div>
+      <div class="load-more-wrap">
+        <button v-if="collections.payments.hasMore" class="load-more-btn" :disabled="collections.payments.loading" @click="fetchMore('payments')">
+          {{ collections.payments.loading ? '⏳ Loading more...' : `Load More (${collections.payments.total - collections.payments.items.length} remaining)` }}
+        </button>
+        <div v-else-if="collections.payments.total > 0" class="end-indicator">✓ All {{ collections.payments.total }} payment accounts loaded</div>
+      </div>
+    </div>
 
-  if (observers[tabKey]) {
-    observers[tabKey].disconnect();
-  }
+    <!-- Referrals Sub-view -->
+    <div id="view-referrals" v-if="commerceSubtab === 'referrals'">
+      <div class="toolbar-section">
+        <div class="filter-row">
+          <div class="search-input-wrap">
+            <input type="text" 
+                   v-model="collections.referrals.search" 
+                   class="search-input" 
+                   placeholder="Search referral programs, codes, links, benefit perks..." 
+                   @input="onSearchInput('referrals')">
+          </div>
+          <div class="filter-group">
+            <span class="count-badge">Showing {{ collections.referrals.items.length }} of {{ collections.referrals.total }}</span>
+            <select class="control-select" :value="collections.referrals.limit" @change="changeLimit('referrals', $event)">
+              <option value="12">12 / page</option>
+              <option value="24">24 / page</option>
+              <option value="48">48 / page</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="commerce-grid">
+        <div v-for="r in collections.referrals.items" :key="r.id" class="commerce-card">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+            <strong style="font-size:16px; color:#fff;">{{ r.name }}</strong>
+            <span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:8px; background:rgba(255,255,255,0.06);"
+                  :style="{
+                    color: (r.status === 'ACTIVE' || r.status === 'ONLINE') ? 'var(--accent-green)' : 'var(--accent-amber)',
+                    border: '1px solid ' + ((r.status === 'ACTIVE' || r.status === 'ONLINE') ? 'var(--accent-green)' : 'var(--accent-amber)')
+                  }">
+              {{ r.status || 'ACTIVE' }}
+            </span>
+          </div>
+          <div style="font-size:12px; color:var(--accent-purple); margin-bottom:8px;">{{ r.category || 'Program' }}</div>
+          <div v-if="r.benefit" style="font-size:13px; color:var(--text-main); margin-bottom:10px;">🎁 {{ r.benefit }}</div>
+          <div v-if="r.code" class="copy-box">
+            <span>Code: {{ r.code }}</span>
+            <button class="copy-btn" @click="copyText(r.code, $event)">Copy</button>
+          </div>
+          <div v-if="r.link" style="margin-top:8px;">
+            <a :href="r.link" target="_blank" rel="noopener noreferrer" class="link-url">Open Referral Link ↗</a>
+          </div>
+        </div>
+        <div v-if="collections.referrals.items.length === 0 && !collections.referrals.loading" style="color:var(--text-muted); text-align:center; padding:40px; grid-column: 1 / -1;">
+          No referral codes found.
+        </div>
+      </div>
+      <div id="referrals-sentinel" class="scroll-sentinel"></div>
+      <div class="load-more-wrap">
+        <button v-if="collections.referrals.hasMore" class="load-more-btn" :disabled="collections.referrals.loading" @click="fetchMore('referrals')">
+          {{ collections.referrals.loading ? '⏳ Loading more...' : `Load More (${collections.referrals.total - collections.referrals.items.length} remaining)` }}
+        </button>
+        <div v-else-if="collections.referrals.total > 0" class="end-indicator">✓ All {{ collections.referrals.total }} referral programs loaded</div>
+      </div>
+    </div>
+  </div>
 
-  observers[tabKey] = new IntersectionObserver((entries) => {
-    if (entries[0].isIntersecting) {
-      const state = tabStates[tabKey];
-      if (state && !state.loading && state.hasMore) {
-        fetchTabItems(tabKey, true);
-      }
-    }
-  }, { rootMargin: '250px' });
+  <!-- EVENT DETAILS MODAL -->
+  <div class="modal-overlay" v-if="modalEvent" style="display:flex;" @click.self="closeModal">
+    <div class="modal-content">
+      <button class="close-btn" @click="closeModal">×</button>
+      <h2 style="margin-bottom: 8px;">{{ modalEvent.title }}</h2>
+      <div style="color: var(--accent-cyan); font-size: 14px; margin-bottom: 16px;">
+        {{ modalEvent.start_date || 'No Date' }} <span v-if="modalEvent.place">• 📍 {{ modalEvent.place }}</span>
+      </div>
+      <div v-if="modalEvent.tags && modalEvent.tags.length > 0" style="display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap;">
+        <span v-for="t in modalEvent.tags" class="tag-pill">{{ t }}</span>
+      </div>
+      <div v-if="modalEvent.contacts && modalEvent.contacts.length > 0" style="color: var(--accent-purple); font-size: 14px; margin-bottom: 16px;">
+        <span v-for="(c, idx) in modalEvent.contacts">👤 {{ c.name }} ({{ c.org || 'Contact' }})<span v-if="idx < modalEvent.contacts.length - 1">, </span></span>
+      </div>
+      <hr style="border: 0; border-top: 1px solid var(--card-border);">
+      <div class="modal-body">{{ modalEvent.notes || 'No description notes available.' }}</div>
+      <div v-if="modalEvent.media && modalEvent.media.length > 0" style="display:flex; gap:10px; margin-top:16px; flex-wrap:wrap;">
+        <img v-for="m in modalEvent.media" :src="'/' + m.stored_path" class="media-img">
+      </div>
+    </div>
+  </div>
 
-  observers[tabKey].observe(sentinel);
-}
-
-// Initial Boot
-loadStats();
-resetAndFetch('events');
-initIntersectionObserver('events');
-resetAndFetch('receipts');
-</script>
+  <!-- FLOATING TOAST NOTIFICATION -->
+  <div v-if="toast.show" class="toast">
+    <span>💡</span>
+    <span>{{ toast.message }}</span>
+  </div>
+</div>
 </body>
 </html>

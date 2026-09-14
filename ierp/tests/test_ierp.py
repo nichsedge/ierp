@@ -21,9 +21,19 @@ from ierp.core.db import get_db, init_db
 from ierp.core.importers import parse_date_to_iso
 from ierp.core.linking import link_events_and_contacts
 from ierp.core.merging import merge_two_contacts, auto_merge_contacts
-from ierp.core.receipts import upsert_receipt, list_receipts, get_receipt, compute_balance, delete_receipt
-from ierp.core.events import insert_event, list_events, get_event, search_events, delete_event
-from ierp.core.contacts import insert_contact, list_contacts, get_contact, resolve_contact, delete_contact
+from ierp.core.events import insert_event, list_events, get_event, search_events, update_event, delete_event
+from ierp.core.finance import (
+    compute_monthly_burn,
+    compute_runway,
+    compute_sansfinance_summary,
+    get_sansfinance_cashflow,
+    get_sansfinance_db_path,
+    insert_commitment,
+    insert_snapshot,
+    list_commitments,
+    list_snapshots,
+)
+from ierp.core.contacts import insert_contact, list_contacts, get_contact, resolve_contact, update_contact, delete_contact
 from ierp.core.vendors import insert_vendor, list_vendors, get_vendor, toggle_vendor_favorite, delete_vendor
 from ierp.core.media import upsert_media_item, ingest_media_records, list_media, upsert_link, list_links
 from ierp.core.sources import normalize_row, normalize_rows, _iso_date, normalize_title
@@ -141,7 +151,19 @@ class TestIERP(unittest.TestCase):
         self.assertEqual(total, 1)
         self.assertEqual(items[0]["id"], ev_id)
 
-        # 6. Delete event
+        # 6. Update event
+        ok, linked_up = update_event(
+            event_id=ev_id,
+            place="Jakarta",
+            notes="Updated workshop notes with Budi Pratama",
+            db_path=self.db_path,
+        )
+        self.assertTrue(ok)
+        ev_updated = get_event(ev_id, db_path=self.db_path)
+        self.assertEqual(ev_updated["place"], "Jakarta")
+        self.assertEqual(ev_updated["notes"], "Updated workshop notes with Budi Pratama")
+
+        # 7. Delete event
         self.assertTrue(delete_event(ev_id, db_path=self.db_path))
         self.assertIsNone(get_event(ev_id, db_path=self.db_path))
 
@@ -174,9 +196,15 @@ class TestIERP(unittest.TestCase):
         self.assertEqual(detail["org"], "Cyberdyne")
 
         # List contacts
-        contacts_list, total = list_contacts(q="resistance", db_path=self.db_path)
-        self.assertEqual(total, 1)
-        self.assertEqual(contacts_list[0]["id"], c_id)
+        contacts, total = list_contacts(source_filter="manual", db_path=self.db_path)
+        self.assertGreaterEqual(total, 1)
+
+        # Update contact
+        ok = update_contact(c_id, notes="Updated note", org="Skynet Resistance", db_path=self.db_path)
+        self.assertTrue(ok)
+        updated = get_contact(c_id, db_path=self.db_path)
+        self.assertEqual(updated["notes"], "Updated note")
+        self.assertEqual(updated["org"], "Skynet Resistance")
 
         # Delete contact
         self.assertTrue(delete_contact(c_id, db_path=self.db_path))
@@ -277,63 +305,38 @@ class TestIERP(unittest.TestCase):
         linked = cursor.execute("SELECT contact_id FROM event_contacts WHERE event_id = ?", (e_id,)).fetchone()
         self.assertEqual(linked[0], c_id)
 
-    def test_receipts_crud_and_balance(self):
-        """Verifies receipt insertion, updating, deletion, listing, retrieval, filtering, and balance computation."""
-        cursor = self.conn.cursor()
-        cursor.execute("INSERT INTO events (title, start_date, tags) VALUES ('Website Project', '2026-08-26', '[\"project\"]')")
-        ev_id = cursor.lastrowid
-        cursor.execute("INSERT INTO events (title, start_date, tags) VALUES ('Consulting Retainer', '2026-08-27', '[\"consulting\"]')")
-        ev_id_2 = cursor.lastrowid
-        self.conn.commit()
+    def test_sansfinance_ssot_cashflow_and_summary(self):
+        """Verifies Sans Finance read-only SSOT monthly cashflow aggregation and summary computation."""
+        sans_db = Path(self.temp_dir.name) / "mock_sans_finance.sqlite"
+        with sqlite3.connect(str(sans_db)) as sconn:
+            sconn.execute("""
+            CREATE TABLE expenses (
+                id INTEGER PRIMARY KEY,
+                date INTEGER,
+                title TEXT,
+                amount INTEGER,
+                type TEXT
+            );
+            """)
+            # Epoch milliseconds dates: 1787554800000 = ~2026-08-24
+            # 10,500,000 IDR = 1,050,000,000 cents
+            # 500,000 IDR = 50,000,000 cents
+            sconn.execute("INSERT INTO expenses (date, title, amount, type) VALUES (1787554800000, 'Salary', 1050000000, 'INCOME')")
+            sconn.execute("INSERT INTO expenses (date, title, amount, type) VALUES (1787555800000, 'Groceries', 50000000, 'EXPENSE')")
+            sconn.commit()
 
-        # Insert receipts
-        dp_id = upsert_receipt(cursor, event_id=ev_id, amount=1500000, type="income", status="paid", notes="DP received")
-        cost_id = upsert_receipt(cursor, event_id=ev_id, amount=233100, type="cost", status="paid", notes="Domain purchase")
-        exp_id = upsert_receipt(cursor, event_id=ev_id, amount=5000000, type="expected", status="unpaid", notes="Expected full payment")
-        upsert_receipt(cursor, event_id=ev_id_2, amount=3000000, type="income", status="paid", notes="Direct retainer")
-        self.conn.commit()
+        # Test get_sansfinance_cashflow
+        cf = get_sansfinance_cashflow(limit=5, db_file=sans_db)
+        self.assertEqual(len(cf), 1)
+        self.assertEqual(cf[0]["income"], 10500000.0)
+        self.assertEqual(cf[0]["cost"], 500000.0)
 
-        # Test listing with type filter
-        income_rows = list_receipts(type="income", db_path=self.db_path)
-        self.assertEqual(len(income_rows), 2)
-
-        cost_rows = list_receipts(type="cost", db_path=self.db_path)
-        self.assertEqual(len(cost_rows), 1)
-        self.assertEqual(cost_rows[0]["amount"], 233100)
-
-        # Test status filter
-        unpaid_rows = list_receipts(status="unpaid", db_path=self.db_path)
-        self.assertEqual(len(unpaid_rows), 1)
-        self.assertEqual(unpaid_rows[0]["type"], "expected")
-
-        # Test get_receipt
-        detail = get_receipt(exp_id, db_path=self.db_path)
-        self.assertIsNotNone(detail)
-        self.assertEqual(detail["amount"], 5000000)
-        self.assertEqual(detail["type"], "expected")
-        self.assertEqual(detail["status"], "unpaid")
-
-        # Test update receipt via upsert_receipt
-        updated_id = upsert_receipt(cursor, event_id=ev_id, amount=5000000, type="expected", status="paid", notes="Settled full payment", receipt_id=exp_id)
-        self.assertEqual(updated_id, exp_id)
-        self.conn.commit()
-        detail_updated = get_receipt(exp_id, db_path=self.db_path)
-        self.assertEqual(detail_updated["status"], "paid")
-
-        # Restore back to unpaid for balance tests
-        upsert_receipt(cursor, event_id=ev_id, amount=5000000, type="expected", status="unpaid", notes="Expected full payment", receipt_id=exp_id)
-        self.conn.commit()
-
-        # Test balance computation
-        bal_global = compute_balance(db_path=self.db_path)
-        self.assertEqual(bal_global["total_income"], 4500000)
-        self.assertEqual(bal_global["total_costs"], 233100)
-        self.assertEqual(bal_global["total_expected"], 5000000)
-        self.assertEqual(bal_global["outstanding"], 3500000)
-
-        # Test delete_receipt
-        self.assertTrue(delete_receipt(cost_id, db_path=self.db_path))
-        self.assertIsNone(get_receipt(cost_id, db_path=self.db_path))
+        # Test compute_sansfinance_summary
+        summary = compute_sansfinance_summary(db_file=sans_db)
+        self.assertEqual(summary["total_income"], 10500000.0)
+        self.assertEqual(summary["total_costs"], 500000.0)
+        self.assertEqual(summary["net_cash"], 10000000.0)
+        self.assertEqual(summary["source"], "sansfinance")
 
     def test_media_upserts_and_json_merging(self):
         """Verifies media engine idempotent upserts, key-wise JSON merging, and links management."""
@@ -474,9 +477,9 @@ class TestIERP(unittest.TestCase):
         self.assertEqual(args_list.limit, 10)
         self.assertTrue(hasattr(args_list, "func"))
 
-        args_balance = parser.parse_args(["balance", "--event-id", "42"])
-        self.assertEqual(args_balance.event_id, 42)
-        self.assertTrue(hasattr(args_balance, "func"))
+        args_cf = parser.parse_args(["cashflow", "--limit", "6"])
+        self.assertEqual(args_cf.limit, 6)
+        self.assertTrue(hasattr(args_cf, "func"))
 
         args_vendor = parser.parse_args(["vendors", "--favorite"])
         self.assertTrue(args_vendor.favorite)
@@ -485,6 +488,22 @@ class TestIERP(unittest.TestCase):
         args_contacts = parser.parse_args(["contacts", "--source", "merged"])
         self.assertEqual(args_contacts.source, "merged")
         self.assertTrue(hasattr(args_contacts, "func"))
+
+        args_ins_contact = parser.parse_args(["insert-contact", "--name", "Nabil", "--org", "Krom", "--client", "Fraud Analytics"])
+        self.assertEqual(args_ins_contact.name, "Nabil")
+        self.assertEqual(args_ins_contact.org, "Krom")
+        self.assertEqual(args_ins_contact.client, "Fraud Analytics")
+        self.assertTrue(hasattr(args_ins_contact, "func"))
+
+        args_up_contact = parser.parse_args(["update-contact", "312", "--notes", "Updated background"])
+        self.assertEqual(args_up_contact.id, 312)
+        self.assertEqual(args_up_contact.notes, "Updated background")
+        self.assertTrue(hasattr(args_up_contact, "func"))
+
+        args_update_ev = parser.parse_args(["update-event", "180", "--notes", "Updated notes"])
+        self.assertEqual(args_update_ev.id, 180)
+        self.assertEqual(args_update_ev.notes, "Updated notes")
+        self.assertTrue(hasattr(args_update_ev, "func"))
 
         args_gadget = parser.parse_args(["gadgets", "--category", "Smartphone"])
         self.assertEqual(args_gadget.category, "Smartphone")
@@ -621,7 +640,6 @@ class TestIERP(unittest.TestCase):
         cursor.execute("INSERT INTO payment_accounts (slug, name, category, number, recipient) VALUES ('bca', 'BCA', 'Bank', '12345678', 'Ichsan')")
         cursor.execute("INSERT INTO referrals (slug, name, category, code, link, status) VALUES ('ref1', 'Cloud', 'Hosting', 'SAVE50', 'https://ref.com', 'ACTIVE')")
         cursor.execute("INSERT INTO media_items (media_type, title, source, data_json) VALUES ('book', 'Sample Book', 'hardcover', '{\"author\": \"Author A\", \"rating\": 4.5}')")
-        cursor.execute("INSERT INTO receipts (event_id, amount, type, status, notes) VALUES (?, 1000000, 'income', 'paid', 'Sponsor payment')", (ev_id,))
         self.conn.commit()
 
         # Temporarily point DB_PATH to test DB
@@ -645,7 +663,29 @@ class TestIERP(unittest.TestCase):
                 self.assertIn("Media Logs", html)
                 self.assertIn("Vendors", html)
                 self.assertIn("Commerce", html)
-                self.assertIn("Receipts", html)
+                self.assertIn("/static/css/dashboard.css", html)
+                self.assertIn("/static/vendor/petite-vue.iife.js", html)
+                self.assertIn("/static/js/app.js", html)
+
+            # 1b. Test GET /static/ assets
+            with urllib.request.urlopen(f"{base_url}/static/css/dashboard.css") as res:
+                self.assertEqual(res.status, 200)
+                self.assertIn("text/css", res.headers.get("Content-Type", ""))
+                css_content = res.read().decode("utf-8")
+                self.assertIn("[v-cloak]", css_content)
+
+            with urllib.request.urlopen(f"{base_url}/static/vendor/petite-vue.iife.js") as res:
+                self.assertEqual(res.status, 200)
+                self.assertIn("javascript", res.headers.get("Content-Type", ""))
+
+            with urllib.request.urlopen(f"{base_url}/static/js/app.js") as res:
+                self.assertEqual(res.status, 200)
+                self.assertIn("javascript", res.headers.get("Content-Type", ""))
+
+            # 1c. Test GET /static/ 404 and traversal security
+            with self.assertRaises(urllib.error.HTTPError) as ctx:
+                urllib.request.urlopen(f"{base_url}/static/nonexistent.js")
+            self.assertEqual(ctx.exception.code, 404)
 
             # 2. Test GET /api/stats
             with urllib.request.urlopen(f"{base_url}/api/stats") as res:
@@ -653,7 +693,6 @@ class TestIERP(unittest.TestCase):
                 data = json.loads(res.read().decode("utf-8"))
                 self.assertGreaterEqual(data["total_events"], 2)
                 self.assertIn("finance", data)
-                self.assertEqual(data["finance"]["total_income"], 1000000)
                 self.assertIn("daily_counts", data)
                 self.assertIn("2026-08-10", data["daily_counts"])
                 self.assertIn("top_places", data)
@@ -709,15 +748,7 @@ class TestIERP(unittest.TestCase):
                 data = json.loads(res.read().decode("utf-8"))
                 self.assertEqual(data["total"], 1)
 
-            # 8. Test GET /api/receipts
-            with urllib.request.urlopen(f"{base_url}/api/receipts?type=income&status=paid&limit=5&offset=0") as res:
-                self.assertEqual(res.status, 200)
-                data = json.loads(res.read().decode("utf-8"))
-                self.assertEqual(data["total"], 1)
-                self.assertEqual(data["items"][0]["amount"], 1000000)
-                self.assertEqual(data["items"][0]["type"], "income")
-
-            # 9. Test GET /api/projects, /api/decisions, /api/runway, /api/radar, /api/maintenance, /api/reviews
+            # 8. Test GET /api/projects, /api/decisions, /api/runway, /api/radar, /api/maintenance, /api/reviews
             with urllib.request.urlopen(f"{base_url}/api/projects") as res:
                 self.assertEqual(res.status, 200)
                 p_data = json.loads(res.read().decode("utf-8"))

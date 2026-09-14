@@ -70,7 +70,6 @@ def insert_gadget(
     serial_number: str | None = None,
     vendor_id: int | None = None,
     event_id: int | None = None,
-    receipt_id: int | None = None,
     notes: str | None = None,
     is_public: bool = True,
     db_path: Path | None = None,
@@ -108,10 +107,10 @@ def insert_gadget(
             INSERT INTO gadgets (
                 slug, name, brand, model, category, status,
                 purchase_date, purchase_price, currency, specs_json,
-                serial_number, vendor_id, event_id, receipt_id,
+                serial_number, vendor_id, event_id,
                 notes, is_public
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 final_slug,
@@ -127,7 +126,6 @@ def insert_gadget(
                 serial_number.strip() if serial_number else None,
                 vendor_id,
                 event_id,
-                receipt_id,
                 notes.strip() if notes else None,
                 1 if is_public else 0,
             ),
@@ -150,7 +148,6 @@ def update_gadget(
     serial_number: str | None = None,
     vendor_id: int | None = None,
     event_id: int | None = None,
-    receipt_id: int | None = None,
     notes: str | None = None,
     is_public: bool | None = None,
     db_path: Path | None = None,
@@ -199,9 +196,6 @@ def update_gadget(
     if event_id is not None:
         fields.append("event_id = ?")
         params.append(event_id)
-    if receipt_id is not None:
-        fields.append("receipt_id = ?")
-        params.append(receipt_id)
     if notes is not None:
         fields.append("notes = ?")
         params.append(notes.strip() if notes else None)
@@ -224,7 +218,7 @@ def update_gadget(
 
 
 def get_gadget(gadget_id_or_slug: int | str, db_path: Path | None = None) -> dict[str, Any] | None:
-    """Fetches a single gadget with joined event, vendor, and receipt details."""
+    """Fetches a single gadget with joined event and vendor details."""
     init_db(db_path)
     with closing(get_db(db_path)) as conn:
         conn.row_factory = sqlite3.Row
@@ -233,11 +227,10 @@ def get_gadget(gadget_id_or_slug: int | str, db_path: Path | None = None) -> dic
         if isinstance(gadget_id_or_slug, int) or (isinstance(gadget_id_or_slug, str) and gadget_id_or_slug.isdigit()):
             cursor.execute(
                 """
-                SELECT g.*, v.name as vendor_name, e.title as event_title, r.amount as receipt_amount
+                SELECT g.*, v.name as vendor_name, e.title as event_title
                 FROM gadgets g
                 LEFT JOIN vendors v ON g.vendor_id = v.id
                 LEFT JOIN events e ON g.event_id = e.id
-                LEFT JOIN receipts r ON g.receipt_id = r.id
                 WHERE g.id = ?
                 """,
                 (int(gadget_id_or_slug),),
@@ -245,11 +238,10 @@ def get_gadget(gadget_id_or_slug: int | str, db_path: Path | None = None) -> dic
         else:
             cursor.execute(
                 """
-                SELECT g.*, v.name as vendor_name, e.title as event_title, r.amount as receipt_amount
+                SELECT g.*, v.name as vendor_name, e.title as event_title
                 FROM gadgets g
                 LEFT JOIN vendors v ON g.vendor_id = v.id
                 LEFT JOIN events e ON g.event_id = e.id
-                LEFT JOIN receipts r ON g.receipt_id = r.id
                 WHERE g.slug = ?
                 """,
                 (str(gadget_id_or_slug),),
@@ -304,11 +296,10 @@ def list_gadgets(
         total_count = cursor.fetchone()[0]
 
         query = f"""
-        SELECT g.*, v.name as vendor_name, e.title as event_title, r.amount as receipt_amount
+        SELECT g.*, v.name as vendor_name, e.title as event_title
         FROM gadgets g
         LEFT JOIN vendors v ON g.vendor_id = v.id
         LEFT JOIN events e ON g.event_id = e.id
-        LEFT JOIN receipts r ON g.receipt_id = r.id
         WHERE {where_sql}
         ORDER BY {sort_col} {sort_dir} NULLS LAST
         LIMIT ? OFFSET ?

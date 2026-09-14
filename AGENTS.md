@@ -38,13 +38,12 @@ Code in `ierp/core/` is organized by bounded domain services:
 | `db.py` | Connection pooling, WAL setup, schema migrations, and indexing | All |
 | `projects.py` | Strategic bets and initiatives lifecycle | `projects` |
 | `decisions.py` | Judgment calibration, hypotheses, and reviews | `decisions` |
-| `finance.py` | Net worth snapshots, recurring burn, and runway computation | `networth_snapshots`, `recurring_commitments` |
+| `finance.py` | Net worth snapshots, recurring burn, runway computation, and Sans Finance cashflow | `networth_snapshots`, `recurring_commitments` |
 | `radar.py` | Dunbar relationship tiers and touchpoint cadence | `contacts` (tier/cadence), `events` |
 | `lifeops.py` | Preventive maintenance, servicing, and document renewals | `maintenance_items` |
 | `reviews.py` | Sprint retrospectives (weekly, monthly, quarterly) | `retrospectives` |
-| `events.py` | Structured event logging, timeline search, and contact linking | `events`, `event_contacts` |
-| `contacts.py` | CRM contact management and resolution | `contacts` |
-| `receipts.py` | Event-level cashflows and balance calculations | `receipts` |
+| `events.py` | Structured event logging, timeline search, updates, and contact linking | `events`, `event_contacts` |
+| `contacts.py` | CRM contact management, insertion, and resolution | `contacts` |
 | `gadgets.py` | Hardware assets, specs, and digital garden sync | `gadgets` |
 | `vendors.py` | Service providers, rental shops, and merchants | `vendors` |
 | `commerce.py` | Payment accounts and affiliate referrals | `payment_accounts`, `referrals` |
@@ -60,6 +59,18 @@ Code in `ierp/core/` is organized by bounded domain services:
 * **Local SQLite with WAL Mode**: All database connections MUST use WAL (`PRAGMA journal_mode = WAL;`) and busy timeouts (`PRAGMA busy_timeout = 5000;`) to guarantee non-blocking concurrent reads and writes between background tasks and the web dashboard.
 * **FTS5 Full-Text Search Virtual Table**: The `events_fts` external content virtual table indexes timeline events and notes in real-time using automatic SQLite triggers (`events_ai`, `events_ad`, `events_au`) and provides BM25 relevance ranking (`bm25(events_fts)`).
 * **Pure Standard Library Garden Generation**: All markdown notes and YAML frontmatter exports to the Digital Garden must remain 100% standard library (no `pyyaml` or external frontmatter libraries).
+
+---
+
+## 🎨 Dashboard Architecture & Frontend Philosophy
+
+* **Zero-Build Declarative Frontend**: The dashboard uses **Petite-Vue** (~16.9 KB standalone, vendored in `ierp/core/static/vendor/petite-vue.iife.js`). No Node.js, npm, webpack, or build pipelines are required.
+* **Separation of Concerns**:
+  - `templates/dashboard.html`: Semantic, declarative markup using Vue directives (`v-scope`, `v-if`, `v-for`, `@click`, `v-model`).
+  - `static/css/dashboard.css`: Design system, glassmorphism cards, CSS variables, and layout styles.
+  - `static/js/app.js`: Reactive Petite-Vue store, tab controllers, API clients, and chart helpers.
+  - `dashboard.py`: Python stdlib `ThreadingHTTPServer` with non-blocking concurrent request handling and static file serving.
+* **Offline-First**: All dashboard assets are vendored locally; the application functions 100% offline without external CDN dependencies.
 
 ---
 

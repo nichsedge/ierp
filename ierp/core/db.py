@@ -416,22 +416,8 @@ def init_db(db_path: Path | None = None, verbose: bool = False) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_retrospectives_start ON retrospectives(period_start);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_retrospectives_type ON retrospectives(period_type);")
 
-    # Receipts / Receivables
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS receipts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
-        amount REAL NOT NULL,
-        type TEXT NOT NULL,
-        status TEXT DEFAULT 'paid',
-        notes TEXT,
-        created_at TEXT DEFAULT (datetime('now', 'localtime')),
-        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
-    );
-    """)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_receipts_event ON receipts(event_id);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_receipts_type ON receipts(type);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_receipts_status ON receipts(status);")
+    # Legacy migration: drop receipts table if exists (Sans Finance is SSOT)
+    cursor.execute("DROP TABLE IF EXISTS receipts;")
 
     # Gadgets / Hardware Assets
     cursor.execute("""
@@ -450,13 +436,20 @@ def init_db(db_path: Path | None = None, verbose: bool = False) -> None:
         serial_number TEXT,
         vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL,
         event_id INTEGER REFERENCES events(id) ON DELETE SET NULL,
-        receipt_id INTEGER REFERENCES receipts(id) ON DELETE SET NULL,
         notes TEXT,
         is_public INTEGER DEFAULT 1,
         created_at TEXT DEFAULT (datetime('now', 'localtime')),
         updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
     """)
+    # Migration: Drop legacy receipt_id column from gadgets if present
+    cols = [r[1] for r in cursor.execute("PRAGMA table_info(gadgets)").fetchall()]
+    if "receipt_id" in cols:
+        try:
+            cursor.execute("ALTER TABLE gadgets DROP COLUMN receipt_id;")
+        except Exception:
+            pass
+
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_gadgets_name ON gadgets(name);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_gadgets_brand ON gadgets(brand);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_gadgets_status ON gadgets(status);")

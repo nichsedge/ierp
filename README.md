@@ -34,9 +34,8 @@ A zero-dependency, offline-first personal operating system, CRM, journal event l
 * **$0 Cloud Sync**:
   * **Google Contacts**: Incremental, tokenized sync using Google People API without monthly API costs.
   * **Google Maps Timeline**: Import raw location history JSON with reverse geocoding cache.
-  * **Live GPS Webhooks**: Ingest live location updates from mobile GPS logger apps directly into SQLite.
-* **Receipts & Receivables Financial Engine**: Track income, costs, and expected payments against journal projects with real-time balance calculations.
-* **Web Dashboard**: Responsive dark-mode dashboard with interactive event filtering, project kanban, decision log, relationship radar, runway gauge, vendor management, and financial ledger.
+  * **Sans Finance SSOT Cashflow Engine**: Read-only monthly cashflow integration aggregating real-world income and expenses directly from the Sans Finance SQLite snapshot.
+* **Web Dashboard**: Responsive dark-mode dashboard built on a lightweight, zero-build declarative architecture (Petite-Vue, ~16.9 KB vendored). Includes interactive 365-day activity heatmaps, Sans Finance SSOT cashflow breakdowns, event filtering, project initiatives, decision journal, relationship radar, and sovereignty runway.
 
 ---
 
@@ -110,18 +109,20 @@ uv run ierp dashboard
 | `uv run ierp show-review <ID>` | Show full sprint retrospective review details. |
 | `uv run ierp audit` | Scan entire ERP for missing data, overdue items, and actionable next steps (`--json`). |
 | `uv run ierp insert --title "<Title>" ...` | Insert a structured journal event directly (`--project-id`, `--contact`). |
+| `uv run ierp update-event <ID> ...` | Update an existing event record (`--title`, `--place`, `--notes`, `--contact`). |
 | `uv run ierp list [--limit N]` | List recent events. |
 | `uv run ierp show <ID>` | Show full event details and linked contacts. |
 | `uv run ierp search "<query>"` | Fast SQLite FTS5 full-text search with BM25 relevance ranking and note snippets. |
 | `uv run ierp garden-export` | Export iERP projects, decisions, reviews, and gadgets to Digital Garden markdown notes. |
 | `uv run ierp contacts [--source ...]` | List CRM contacts with filtering (`--tier`). |
 | `uv run ierp show-contact <ID>` | Show contact details, Dunbar tier, and linked events. |
+| `uv run ierp insert-contact --name ...` | Insert a contact record directly (`--org`, `--client`, `--location`, `--tier`). |
+| `uv run ierp update-contact <ID> ...` | Update an existing contact record (`--org`, `--client`, `--location`, `--notes`, `--tier`). |
 | `uv run ierp sync-contacts` | Sync contacts from Google People API ($0 cost). |
 | `uv run ierp merge-contacts --auto` | Auto-detect and merge matching duplicate contacts. |
 | `uv run ierp vendors [--favorite]` | List vendors and preferred service providers. |
 | `uv run ierp gadgets` | List hardware assets/gadgets with specs and linkages. |
-| `uv run ierp insert-receipt` | Record or update monetary receipt/receivable against an event. |
-| `uv run ierp balance` | Show net cash, net position, and outstanding balance summary. |
+| `uv run ierp cashflow` | Display monthly income and expense cashflow from Sans Finance SSOT. |
 | `uv run ierp pay` | List payment accounts and banking nodes. |
 | `uv run ierp referrals` | List referral codes and affiliate links. |
 | `uv run ierp dashboard [--port 8000]` | Start web dashboard server with live GPS webhook receiver. |

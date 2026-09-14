@@ -240,3 +240,117 @@ def compute_runway(db_path: Optional[Path] = None) -> Dict[str, Any]:
         "latest_snapshot_date": snapshot["snapshot_date"] if snapshot else None,
         "commitments_count": burn["commitments_count"],
     }
+
+
+def get_sansfinance_db_path() -> Optional[Path]:
+    """Locates the local Sans Finance SQLite database or snapshot (read-only SSOT)."""
+    import os
+
+    env_path = os.getenv("SANSFINANCE_DB_PATH")
+    if env_path:
+        p = Path(env_path)
+        if p.exists() and p.stat().st_size > 0:
+            return p
+
+    candidates = [
+        Path.home() / "Projects" / "portfolio-integration" / "data" / "sans_finance_latest.sqlite",
+        Path.home() / "Projects" / "sansfinance" / "sans_finance_db_snapshot.sqlite",
+    ]
+    for c in candidates:
+        if c.exists() and c.stat().st_size > 0:
+            return c
+    return None
+
+
+def get_sansfinance_cashflow(limit: int = 12, db_file: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """
+    Reads monthly cashflow aggregates (Income vs Expense) directly from
+    the Sans Finance SQLite database snapshot (Single Source of Truth).
+    Returns list of monthly dictionaries compatible with dashboard cashflow charts.
+    """
+    import sqlite3
+    from contextlib import closing
+
+    target_db = db_file or get_sansfinance_db_path()
+    if not target_db or not target_db.exists() or target_db.stat().st_size == 0:
+        return []
+
+    query = """
+    SELECT 
+        strftime('%Y-%m', date/1000, 'unixepoch', 'localtime') as ym,
+        type,
+        SUM(amount) / 100.0 as total_amt
+    FROM expenses
+    WHERE date IS NOT NULL
+    GROUP BY ym, type
+    ORDER BY ym DESC
+    """
+    cashflow_map: Dict[str, Dict[str, Any]] = {}
+
+    try:
+        # Connect in read-only URI mode to prevent any locks or mutation
+        with closing(sqlite3.connect(f"file:{target_db}?mode=ro", uri=True)) as conn:
+            cursor = conn.cursor()
+            rows = cursor.execute(query).fetchall()
+            for ym, rtype, total_amt in rows:
+                if not ym:
+                    continue
+                if ym not in cashflow_map:
+                    cashflow_map[ym] = {"year_month": ym, "income": 0.0, "cost": 0.0, "expected": 0.0}
+                amt = float(total_amt or 0.0)
+                rtype_upper = (rtype or "").upper()
+                if rtype_upper == "INCOME":
+                    cashflow_map[ym]["income"] += amt
+                elif rtype_upper == "EXPENSE":
+                    cashflow_map[ym]["cost"] += amt
+    except Exception:
+        return []
+
+    return list(cashflow_map.values())[:limit]
+
+
+def compute_sansfinance_summary(db_file: Optional[Path] = None) -> Dict[str, Any]:
+    """Computes overall cashflow totals from the Sans Finance SSOT database snapshot."""
+    import sqlite3
+    from contextlib import closing
+
+    target_db = db_file or get_sansfinance_db_path()
+    if not target_db or not target_db.exists() or target_db.stat().st_size == 0:
+        return {
+            "total_income": 0.0,
+            "total_costs": 0.0,
+            "net_cash": 0.0,
+            "net_position": 0.0,
+            "outstanding": 0.0,
+            "source": "none",
+        }
+
+    try:
+        with closing(sqlite3.connect(f"file:{target_db}?mode=ro", uri=True)) as conn:
+            cursor = conn.cursor()
+            income_row = cursor.execute(
+                "SELECT COALESCE(SUM(amount), 0) / 100.0 FROM expenses WHERE UPPER(type) = 'INCOME'"
+            ).fetchone()
+            cost_row = cursor.execute(
+                "SELECT COALESCE(SUM(amount), 0) / 100.0 FROM expenses WHERE UPPER(type) = 'EXPENSE'"
+            ).fetchone()
+            total_income = float(income_row[0]) if income_row else 0.0
+            total_costs = float(cost_row[0]) if cost_row else 0.0
+            net_cash = total_income - total_costs
+            return {
+                "total_income": round(total_income, 2),
+                "total_costs": round(total_costs, 2),
+                "net_cash": round(net_cash, 2),
+                "net_position": round(net_cash, 2),
+                "outstanding": 0.0,
+                "source": "sansfinance",
+            }
+    except Exception:
+        return {
+            "total_income": 0.0,
+            "total_costs": 0.0,
+            "net_cash": 0.0,
+            "net_position": 0.0,
+            "outstanding": 0.0,
+            "source": "none",
+        }

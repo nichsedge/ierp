@@ -46,3 +46,4 @@ ierp/google_token.json
 *.pem
 .envrc
 backups/
+.wrangler/

@@ -85,6 +85,92 @@ def insert_event(
     return ev_id, linked_names
 
 
+def update_event(
+    event_id: int,
+    title: str | None = None,
+    place: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    tags: str | list[str] | None = None,
+    url: str | None = None,
+    notes: str | None = None,
+    contacts: list[str | int] | None = None,
+    project_id: int | None = None,
+    db_path: Path | None = None,
+) -> tuple[bool, list[str]]:
+    """
+    Updates an existing event record in SQLite.
+    Returns (success_boolean, list_of_explicitly_linked_contact_names).
+    """
+    init_db(db_path)
+    linked_names: list[str] = []
+
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
+        existing = cursor.execute("SELECT id FROM events WHERE id = ?", (event_id,)).fetchone()
+        if not existing:
+            return False, []
+
+        updates: list[str] = []
+        params: list[Any] = []
+
+        if title is not None:
+            updates.append("title = ?")
+            params.append(title)
+        if place is not None:
+            updates.append("place = ?")
+            params.append(place)
+        if start_date is not None:
+            parsed_start, _ = parse_date_to_iso(start_date)
+            updates.append("start_date = ?")
+            params.append(parsed_start)
+            updates.append("raw_date = ?")
+            params.append(start_date)
+        if end_date is not None:
+            parsed_end, _ = parse_date_to_iso(end_date)
+            updates.append("end_date = ?")
+            params.append(parsed_end)
+        if tags is not None:
+            if isinstance(tags, list):
+                tag_list = [str(t).strip() for t in tags if str(t).strip()]
+            elif isinstance(tags, str):
+                tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+            else:
+                tag_list = []
+            updates.append("tags = ?")
+            params.append(json.dumps(tag_list))
+        if url is not None:
+            updates.append("url = ?")
+            params.append(url)
+        if notes is not None:
+            updates.append("notes = ?")
+            params.append(notes)
+        if project_id is not None:
+            updates.append("project_id = ?")
+            params.append(project_id)
+
+        if updates:
+            params.append(event_id)
+            cursor.execute(f"UPDATE events SET {', '.join(updates)} WHERE id = ?", params)
+
+        if contacts is not None:
+            from .contacts import resolve_contact
+            for ref in contacts:
+                cid, cname = resolve_contact(cursor, ref)
+                if cid is not None:
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO event_contacts (event_id, contact_id) VALUES (?, ?)",
+                        (event_id, cid),
+                    )
+                    if cname:
+                        linked_names.append(cname)
+
+        conn.commit()
+        link_events_and_contacts(conn)
+
+    return True, linked_names
+
+
 def list_events(
     limit: int = 20,
     offset: int = 0,

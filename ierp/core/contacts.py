@@ -186,6 +186,70 @@ def get_contact(contact_id: int, db_path: Path | None = None) -> dict[str, Any] 
         }
 
 
+def update_contact(
+    contact_id: int,
+    name: str | None = None,
+    org: str | None = None,
+    client: str | None = None,
+    location: str | None = None,
+    email: str | None = None,
+    phone: str | None = None,
+    notes: str | None = None,
+    tier: int | None = None,
+    cadence_days: int | None = None,
+    db_path: Path | None = None,
+) -> bool:
+    """Updates fields of an existing contact. Returns True if contact was found and updated."""
+    init_db(db_path)
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
+        existing = cursor.execute("SELECT id FROM contacts WHERE id = ?", (contact_id,)).fetchone()
+        if not existing:
+            return False
+
+        updates: list[str] = []
+        params: list[Any] = []
+
+        if name is not None:
+            updates.append("name = ?")
+            params.append(name)
+        if org is not None:
+            updates.append("org = ?")
+            params.append(org)
+        if client is not None:
+            updates.append("client = ?")
+            params.append(client)
+        if location is not None:
+            updates.append("location = ?")
+            params.append(location)
+        if email is not None:
+            updates.append("email = ?")
+            params.append(email)
+        if phone is not None:
+            updates.append("phone = ?")
+            params.append(phone)
+        if notes is not None:
+            updates.append("notes = ?")
+            params.append(notes)
+        if tier is not None:
+            clean_tier = max(1, min(3, tier))
+            updates.append("tier = ?")
+            params.append(clean_tier)
+            if cadence_days is None:
+                updates.append("cadence_days = ?")
+                params.append(14 if clean_tier == 1 else (60 if clean_tier == 2 else 180))
+        if cadence_days is not None:
+            updates.append("cadence_days = ?")
+            params.append(cadence_days)
+
+        if updates:
+            params.append(contact_id)
+            cursor.execute(f"UPDATE contacts SET {', '.join(updates)} WHERE id = ?", params)
+            conn.commit()
+
+        return True
+
+
 def delete_contact(contact_id: int, db_path: Path | None = None) -> bool:
     """Deletes a contact by ID. Returns True if row was deleted."""
     with closing(get_db(db_path)) as conn:
