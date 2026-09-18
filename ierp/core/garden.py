@@ -152,7 +152,7 @@ def export_garden_projects(
             "title": title,
             "date": start_date,
             "tags": ["project", "initiative", "ierp"],
-            "publish_external": True,
+            "publish_external": bool(details.get("publish_external", False)),
             "status": "seedling",
             "project_status": status,
             "priority": priority,
@@ -207,7 +207,7 @@ def export_garden_projects(
         "title": "Projects",
         "date": datetime.now().strftime("%Y-%m-%d"),
         "tags": ["moc", "projects"],
-        "publish_external": True,
+        "publish_external": False,
     }
     index_body = [
         "# Projects & Strategic Initiatives",
@@ -273,7 +273,7 @@ def export_garden_decisions(
             "title": title,
             "date": date_str,
             "tags": ["decision", "pdr", "judgment"],
-            "publish_external": True,
+            "publish_external": bool(d.get("publish_external", False)),
             "status": "seedling",
             "decision_status": status,
             "confidence": confidence,
@@ -322,7 +322,7 @@ def export_garden_decisions(
         "title": "Decision Journal",
         "date": datetime.now().strftime("%Y-%m-%d"),
         "tags": ["moc", "decisions", "pdr"],
-        "publish_external": True,
+        "publish_external": False,
     }
     index_body = [
         "# Decision Journal (Personal Decision Records)",
@@ -388,7 +388,7 @@ def export_garden_reviews(
             "title": note_title,
             "date": p_end,
             "tags": ["retrospective", "review", "lifeops"],
-            "publish_external": True,
+            "publish_external": bool(r.get("publish_external", False)),
             "period_type": p_type,
             "rating": rating,
         }
@@ -427,7 +427,7 @@ def export_garden_reviews(
         "title": "Retrospectives & Sprint Reviews",
         "date": datetime.now().strftime("%Y-%m-%d"),
         "tags": ["moc", "retrospective"],
-        "publish_external": True,
+        "publish_external": False,
     }
     index_body = [
         "# Sprint Retrospectives",

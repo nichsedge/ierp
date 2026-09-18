@@ -40,13 +40,21 @@
         const res = await fetch('/api/events/' + eventId);
         if (!res.ok) throw new Error('HTTP ' + res.status);
         this.modalEvent = await res.json();
+        if (window.history.state?.modal !== true) {
+          window.history.pushState({ modal: true }, '');
+        }
       } catch (err) {
         console.error('Failed to load event detail:', err);
         this.showToast('Failed to load event details');
       }
     },
     closeModal() {
-      this.modalEvent = null;
+      if (this.modalEvent) {
+        this.modalEvent = null;
+        if (window.history.state?.modal === true) {
+          window.history.back();
+        }
+      }
     },
 
     // Overview Stats
@@ -205,20 +213,44 @@
 
     // Lifecycle Init
     init() {
-      this.loadStats();
+      const VALID_TABS = ['overview', 'events', 'contacts', 'projects', 'decisions', 'radar', 'lifeops', 'media', 'vendors', 'links', 'commerce'];
+      const hashTab = window.location.hash ? window.location.hash.replace('#', '') : '';
+      const initialTab = VALID_TABS.includes(hashTab) ? hashTab : 'overview';
+      this.switchTab(initialTab, false);
+
       this.$nextTick(() => {
         this.setupObservers();
       });
+
       window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && this.modalEvent) {
           this.closeModal();
         }
       });
+
+      window.addEventListener('popstate', () => {
+        if (this.modalEvent) {
+          this.modalEvent = null;
+          return;
+        }
+        const currentHash = window.location.hash ? window.location.hash.replace('#', '') : '';
+        if (VALID_TABS.includes(currentHash) && currentHash !== this.activeTab) {
+          this.switchTab(currentHash, false);
+        }
+      });
     },
 
     // Navigation
-    switchTab(tabName) {
+    switchTab(tabName, updateHash = true) {
       this.activeTab = tabName;
+      if (updateHash && window.location.hash !== '#' + tabName) {
+        if (window.history.replaceState) {
+          window.history.replaceState(null, '', '#' + tabName);
+        } else {
+          window.location.hash = tabName;
+        }
+      }
+
       if (tabName === 'overview') {
         this.loadStats();
       } else if (['events', 'contacts', 'media', 'vendors', 'links'].includes(tabName)) {

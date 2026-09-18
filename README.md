@@ -35,7 +35,7 @@ A zero-dependency, offline-first personal operating system, CRM, journal event l
   * **Google Contacts**: Incremental, tokenized sync using Google People API without monthly API costs.
   * **Google Maps Timeline**: Import raw location history JSON with reverse geocoding cache.
   * **Sans Finance SSOT Cashflow Engine**: Read-only monthly cashflow integration aggregating real-world income and expenses directly from the Sans Finance SQLite snapshot.
-* **Web Dashboard**: Responsive dark-mode dashboard built on a lightweight, zero-build declarative architecture (Petite-Vue, ~16.9 KB vendored). Includes interactive 365-day activity heatmaps, Sans Finance SSOT cashflow breakdowns, event filtering, project initiatives, decision journal, relationship radar, and sovereignty runway.
+* **Web Dashboard**: Responsive dark-mode dashboard built on a lightweight, zero-build declarative architecture (Petite-Vue, ~16.9 KB vendored). Tailscale & mobile-optimized with standalone PWA support, swipable tab navigation, bottom-sheet modal drawers, interactive 365-day activity heatmaps, Sans Finance SSOT cashflow breakdowns, event filtering, project initiatives, decision journal, relationship radar, and sovereignty runway.
 
 ---
 

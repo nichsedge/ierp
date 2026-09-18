@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#090d16">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="iERP">
   <title>iERP — Personal Journal & CRM ERP</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -136,14 +141,16 @@
     <div class="charts-grid">
       <div class="panel">
         <div class="panel-title">Monthly Event Activity</div>
-        <div class="bar-chart" id="monthly-chart">
-          <div v-for="m in monthlyCountsChart" class="chart-bar-col">
-            <div class="bar-wrapper">
-              <div class="bar-fill" :style="{ height: m.heightPct + '%' }" :data-count="m.count"></div>
+        <div class="chart-scroll-wrap">
+          <div class="bar-chart" id="monthly-chart">
+            <div v-for="m in monthlyCountsChart" class="chart-bar-col">
+              <div class="bar-wrapper">
+                <div class="bar-fill" :style="{ height: m.heightPct + '%' }" :data-count="m.count"></div>
+              </div>
+              <div class="bar-label">{{ m.year_month }}</div>
             </div>
-            <div class="bar-label">{{ m.year_month }}</div>
+            <div v-if="monthlyCountsChart.length === 0" style="color:var(--text-muted); font-size:13px; margin:auto;">No monthly events logged yet.</div>
           </div>
-          <div v-if="monthlyCountsChart.length === 0" style="color:var(--text-muted); font-size:13px; margin:auto;">No monthly events logged yet.</div>
         </div>
       </div>
       <div class="panel">
@@ -151,16 +158,18 @@
           <span>Monthly Cashflow (Sans Finance SSOT)</span>
           <span style="font-size:11px; color:var(--text-muted);">Income (Green) / Cost (Red) / Exp (Purple)</span>
         </div>
-        <div class="cashflow-chart" id="cashflow-chart">
-          <div v-for="c in cashflowChartData" class="cf-col">
-            <div class="cf-bars-wrap">
-              <div class="cf-bar income" :style="{ height: c.incPct + '%' }" :data-tooltip="'Income: Rp' + (c.income || 0).toLocaleString('id-ID')"></div>
-              <div class="cf-bar cost" :style="{ height: c.costPct + '%' }" :data-tooltip="'Cost: Rp' + (c.cost || 0).toLocaleString('id-ID')"></div>
-              <div class="cf-bar expected" :style="{ height: c.expPct + '%' }" :data-tooltip="'Expected: Rp' + (c.expected || 0).toLocaleString('id-ID')"></div>
+        <div class="chart-scroll-wrap">
+          <div class="cashflow-chart" id="cashflow-chart">
+            <div v-for="c in cashflowChartData" class="cf-col">
+              <div class="cf-bars-wrap">
+                <div class="cf-bar income" :style="{ height: c.incPct + '%' }" :data-tooltip="'Income: Rp' + (c.income || 0).toLocaleString('id-ID')"></div>
+                <div class="cf-bar cost" :style="{ height: c.costPct + '%' }" :data-tooltip="'Cost: Rp' + (c.cost || 0).toLocaleString('id-ID')"></div>
+                <div class="cf-bar expected" :style="{ height: c.expPct + '%' }" :data-tooltip="'Expected: Rp' + (c.expected || 0).toLocaleString('id-ID')"></div>
+              </div>
+              <div class="bar-label">{{ c.year_month }}</div>
             </div>
-            <div class="bar-label">{{ c.year_month }}</div>
+            <div v-if="cashflowChartData.length === 0" style="color:var(--text-muted); font-size:13px; margin:auto;">No cashflow records found in Sans Finance snapshot.</div>
           </div>
-          <div v-if="cashflowChartData.length === 0" style="color:var(--text-muted); font-size:13px; margin:auto;">No cashflow records found in Sans Finance snapshot.</div>
         </div>
       </div>
     </div>
@@ -349,8 +358,8 @@
           </span>
         </div>
         <div v-if="c.org" class="contact-org">🏢 {{ c.org }} <span v-if="c.client">({{ c.client }})</span></div>
-        <div v-if="c.email" style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">✉️ {{ c.email }}</div>
-        <div v-if="c.phone" style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">📞 {{ c.phone }}</div>
+        <div v-if="c.email" style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">✉️ <a :href="'mailto:' + c.email" class="action-link">{{ c.email }}</a></div>
+        <div v-if="c.phone" style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">📞 <a :href="'tel:' + c.phone" class="action-link">{{ c.phone }}</a></div>
         <div v-if="c.location" style="font-size:13px; color:var(--text-muted); margin-bottom:8px;">📍 {{ c.location }}</div>
         <div class="contact-badge">{{ c.event_count || 0 }} Linked Events</div>
       </div>
@@ -701,8 +710,8 @@
                   @click="toggleVendorFavorite(v.id, $event)">★</button>
         </div>
         <div v-if="v.location" style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">📍 {{ v.location }}</div>
-        <div v-if="v.phone" style="font-size:13px; color:var(--accent-cyan); margin-bottom:4px;">📞 {{ v.phone }}</div>
-        <div v-if="v.email" style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">✉️ {{ v.email }}</div>
+        <div v-if="v.phone" style="font-size:13px; color:var(--accent-cyan); margin-bottom:4px;">📞 <a :href="'tel:' + v.phone" class="action-link" style="color:var(--accent-cyan);">{{ v.phone }}</a></div>
+        <div v-if="v.email" style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">✉️ <a :href="'mailto:' + v.email" class="action-link">{{ v.email }}</a></div>
         <div v-if="v.notes" style="font-size:13.5px; color:var(--text-muted); margin-top:8px; line-height:1.4;">{{ v.notes }}</div>
       </div>
       <div v-if="collections.vendors.items.length === 0 && !collections.vendors.loading" style="color:var(--text-muted); text-align:center; padding:40px; grid-column: 1 / -1;">
@@ -902,6 +911,7 @@
   <!-- EVENT DETAILS MODAL -->
   <div class="modal-overlay" v-if="modalEvent" style="display:flex;" @click.self="closeModal">
     <div class="modal-content">
+      <div class="modal-sheet-handle"></div>
       <button class="close-btn" @click="closeModal">×</button>
       <h2 style="margin-bottom: 8px;">{{ modalEvent.title }}</h2>
       <div style="color: var(--accent-cyan); font-size: 14px; margin-bottom: 16px;">

@@ -1158,7 +1158,7 @@ class TestIERP(unittest.TestCase):
             self.assertTrue(proj_file.exists())
             proj_content = proj_file.read_text(encoding="utf-8")
             self.assertIn("title: \"Sovereign Infra\"", proj_content)
-            self.assertIn("publish_external: true", proj_content)
+            self.assertIn("publish_external: false", proj_content)
             self.assertIn("Deploy WAL Engine", proj_content)
             self.assertTrue((garden_dir / "Knowledge" / "Projects" / "index.md").exists())
 

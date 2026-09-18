@@ -71,6 +71,13 @@ Code in `ierp/core/` is organized by bounded domain services:
   - `static/js/app.js`: Reactive Petite-Vue store, tab controllers, API clients, and chart helpers.
   - `dashboard.py`: Python stdlib `ThreadingHTTPServer` with non-blocking concurrent request handling and static file serving.
 * **Offline-First**: All dashboard assets are vendored locally; the application functions 100% offline without external CDN dependencies.
+* **Mobile-First Responsiveness & Tailscale Access**:
+  - PWA standalone capability (`apple-mobile-web-app-capable`, `theme-color`, `viewport-fit=cover`).
+  - Swipable horizontal navigation tabs (`overflow-x: auto; scroll-snap-type: x proximity;`).
+  - iOS Safari auto-zoom prevention: all form inputs and selects enforce minimum `16px` font size on screens `< 768px`.
+  - Mobile bottom-sheet modal with drag handle and browser back-gesture interception via `history.pushState` / `popstate`.
+  - Actionable tel: and mailto: protocol links on CRM contacts and vendors.
+  - Tab state persistence synchronized with URL hash (`#events`, `#radar`, `#commerce`).
 
 ---
 
