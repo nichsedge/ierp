@@ -38,7 +38,7 @@ from ierp.core.vendors import insert_vendor, list_vendors, get_vendor, toggle_ve
 from ierp.core.media import upsert_media_item, ingest_media_records, list_media, upsert_link, list_links
 from ierp.core.sources import normalize_row, normalize_rows, _iso_date, normalize_title
 from ierp.core.commerce import init_tables as init_commerce_tables, upsert_payment_account, upsert_referral, list_payment_accounts, list_referrals
-from ierp.core.decisions import delete_decision, get_decision, insert_decision, list_decisions, review_decision
+from ierp.core.decisions import delete_decision, get_decision, get_decision_alerts, insert_decision, list_decisions, review_decision
 from ierp.core.finance import compute_monthly_burn, compute_runway, insert_commitment, insert_snapshot, list_commitments, list_snapshots
 from ierp.core.gadgets import (
     delete_gadget,
@@ -51,7 +51,7 @@ from ierp.core.gadgets import (
 )
 from ierp.core.lifeops import complete_maintenance, get_maintenance, get_maintenance_summary, insert_maintenance, list_maintenance
 from ierp.core.projects import delete_project, get_project, get_project_summary, insert_project, list_projects, update_project
-from ierp.core.radar import compute_radar, get_radar_summary, update_contact_cadence
+from ierp.core.radar import compute_radar, get_daily_reconnection, get_radar_summary, update_contact_cadence
 from ierp.core.reviews import delete_retrospective, get_retrospective, insert_retrospective, list_retrospectives
 from ierp.core.garden import (
     export_garden_all,
@@ -1179,6 +1179,60 @@ class TestIERP(unittest.TestCase):
             self.assertIn("Shipped FTS5 search", retro_content)
             self.assertIn("rating: 10", retro_content)
             self.assertTrue((garden_dir / "Write" / "Retrospectives" / "index.md").exists())
+
+    def test_daily_reconnection_and_tier_0(self):
+        """Verifies Tier 0 contacts are ignored by default and get_daily_reconnection picks highest priority."""
+        # Insert Tier 0 contact (untracked directory)
+        c0 = insert_contact(name="Directory Contact", tier=0, db_path=self.db_path)
+        # Insert Tier 2 contact
+        c2 = insert_contact(name="Core Friend", tier=2, cadence_days=60, db_path=self.db_path)
+        # Insert Tier 1 contact
+        c1 = insert_contact(name="Inner Circle Family", tier=1, cadence_days=14, db_path=self.db_path)
+
+        # compute_radar should exclude Tier 0 by default
+        radar = compute_radar(overdue_only=False, db_path=self.db_path)
+        ids = [c["id"] for c in radar]
+        self.assertNotIn(c0, ids)
+        self.assertIn(c1, ids)
+        self.assertIn(c2, ids)
+
+        # get_daily_reconnection should prioritize Tier 1
+        daily = get_daily_reconnection(db_path=self.db_path)
+        self.assertIsNotNone(daily)
+        self.assertEqual(daily["id"], c1)
+
+    def test_decision_retrospective_alerts(self):
+        """Verifies get_decision_alerts detects overdue and upcoming decisions."""
+        d_overdue = insert_decision(
+            title="Overdue Choice",
+            choice="A",
+            confidence=8,
+            review_date="2026-09-01",
+            db_path=self.db_path,
+        )
+        d_upcoming = insert_decision(
+            title="Upcoming Choice",
+            choice="B",
+            confidence=9,
+            review_date="2026-09-25",
+            db_path=self.db_path,
+        )
+        d_far = insert_decision(
+            title="Far Future Choice",
+            choice="C",
+            confidence=7,
+            review_date="2027-01-01",
+            db_path=self.db_path,
+        )
+
+        alerts = get_decision_alerts(window_days=10, db_path=self.db_path)
+        overdue_ids = [d["id"] for d in alerts["overdue"]]
+        upcoming_ids = [d["id"] for d in alerts["upcoming"]]
+
+        self.assertIn(d_overdue, overdue_ids)
+        self.assertIn(d_upcoming, upcoming_ids)
+        self.assertNotIn(d_far, overdue_ids)
+        self.assertNotIn(d_far, upcoming_ids)
 
 
 def run_tests():

@@ -43,7 +43,9 @@ from ierp.core.contacts import get_contact, insert_contact, list_contacts, updat
 from ierp.core.dashboard import start_dashboard_server
 from ierp.core.db import get_db, init_db
 from ierp.core.decisions import (
+    delete_decision,
     get_decision,
+    get_decision_alerts,
     insert_decision,
     list_decisions,
     review_decision,
@@ -96,6 +98,7 @@ from ierp.core.projects import (
 )
 from ierp.core.radar import (
     compute_radar,
+    get_daily_reconnection,
     get_radar_summary,
     update_contact_cadence,
 )
@@ -832,7 +835,36 @@ def handle_insert_decision(args: argparse.Namespace) -> None:
 
 
 def handle_list_decisions(args: argparse.Namespace) -> None:
-    decisions = list_decisions(status=args.status, project_id=args.project_id, pending_review_only=args.pending_review, limit=args.limit)
+    if getattr(args, "pending_review", False):
+        window = getattr(args, "window", 30)
+        alerts = get_decision_alerts(window_days=window)
+        overdue = alerts.get("overdue", [])
+        upcoming = alerts.get("upcoming", [])
+
+        if not overdue and not upcoming:
+            print(f"\n{C_GREEN}✨ No decisions pending retrospective review within {window} days.{C_RESET}\n")
+            return
+
+        if overdue:
+            print(f"\n{C_BOLD}{C_RED}⚠️  Overdue Decision Retrospectives ({len(overdue)}):{C_RESET}")
+            print(f"{C_BOLD}{'ID':<4} | {'Title':<32} | {'Conf':<5} | {'Review Due':<12} | {'Days Overdue':<12} | Project{C_RESET}")
+            print("-" * 95)
+            for d in overdue:
+                proj = d["project_title"] or "-"
+                print(f"{d['id']:<4} | {d['title'][:32]:<32} | {d['confidence']:<5} | {d['review_date']:<12} | {d['days_overdue']}d overdue    | {proj[:20]}")
+
+        if upcoming:
+            print(f"\n{C_BOLD}{C_YELLOW}📅 Upcoming Decision Retrospectives (Next {window}d, {len(upcoming)}):{C_RESET}")
+            print(f"{C_BOLD}{'ID':<4} | {'Title':<32} | {'Conf':<5} | {'Review Due':<12} | {'Days Left':<12} | Project{C_RESET}")
+            print("-" * 95)
+            for d in upcoming:
+                proj = d["project_title"] or "-"
+                print(f"{d['id']:<4} | {d['title'][:32]:<32} | {d['confidence']:<5} | {d['review_date']:<12} | in {d['days_until_review']}d        | {proj[:20]}")
+
+        print(f"\n{C_CYAN}Tip: Complete a review with: ierp review-decision <id>{C_RESET}\n")
+        return
+
+    decisions = list_decisions(status=args.status, project_id=args.project_id, limit=args.limit)
     if not decisions:
         print("No decisions found.")
         return
@@ -868,7 +900,30 @@ def handle_show_decision(args: argparse.Namespace) -> None:
 
 
 def handle_review_decision(args: argparse.Namespace) -> None:
-    ok = review_decision(args.id, actual_outcome=args.outcome, status=args.status)
+    d = get_decision(args.id)
+    if not d:
+        print(f"{C_RED}Decision #{args.id} not found.{C_RESET}")
+        return
+
+    outcome = args.outcome
+    if not outcome:
+        print(f"\n{C_BOLD}📝 Retrospective Review for Decision #{d['id']}: {d['title']}{C_RESET}")
+        print(f"   • Chosen Option:      {d['choice']}")
+        print(f"   • Initial Confidence: {d['confidence']}/10")
+        if d.get("expected_outcome"):
+            print(f"   • Expected Outcome:   {d['expected_outcome']}")
+        print()
+        try:
+            outcome = input(f"{C_BOLD}What was the actual observed outcome? {C_RESET}").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nReview cancelled.")
+            return
+
+    if not outcome:
+        print(f"{C_RED}Outcome description cannot be empty.{C_RESET}")
+        return
+
+    ok = review_decision(args.id, actual_outcome=outcome, status=args.status)
     if ok:
         print(f"{C_GREEN}Decision #{args.id} successfully reviewed and marked '{args.status}'.{C_RESET}")
     else:
@@ -965,6 +1020,31 @@ def handle_runway(args: argparse.Namespace) -> None:
 # -----------------------------------------------------------------------------
 
 def handle_radar(args: argparse.Namespace) -> None:
+    if getattr(args, "daily", False):
+        daily = get_daily_reconnection()
+        if not daily:
+            print(f"\n{C_GREEN}✨ All relationships across Tier 1-3 are within their cadence! No overdue contacts today.{C_RESET}\n")
+            return
+
+        last_touch = daily["last_seen_date"] or "Unrecorded"
+        days_ago = f"{daily['days_since_last_touch']}d ago" if daily["days_since_last_touch"] < 999 else "Never"
+
+        print(f"\n{C_BOLD}🎯 Daily Connection Radar (1 Contact Focus){C_RESET}")
+        print("=" * 65)
+        print(f"{C_BOLD}Name:{C_RESET}       {daily['name']} (Tier {daily['tier']} • {daily['cadence_days']}d cadence)")
+        if daily.get("org"):
+            print(f"{C_BOLD}Org:{C_RESET}        {daily['org']}")
+        print(f"{C_BOLD}Status:{C_RESET}     {C_RED}{daily['days_overdue']}d overdue{C_RESET} (Last touch: {last_touch}, {days_ago})")
+        if daily.get("phone"):
+            print(f"{C_BOLD}Phone:{C_RESET}      {daily['phone']}")
+        if daily.get("email"):
+            print(f"{C_BOLD}Email:{C_RESET}      {daily['email']}")
+        if daily.get("notes"):
+            print(f"{C_BOLD}Notes:{C_RESET}      {daily['notes']}")
+        print("=" * 65)
+        print(f"{C_CYAN}Tip: Send a quick check-in or log an interaction with: ierp insert --contacts \"{daily['name']}\"{C_RESET}\n")
+        return
+
     items = compute_radar(tier=args.tier, overdue_only=args.overdue_only, limit=args.limit)
     if not items:
         print("No contacts matching radar criteria.")
@@ -1139,6 +1219,19 @@ def handle_test(args: argparse.Namespace) -> None:
     else:
         print(f"\n{C_RED}{C_BOLD}Some tests failed.{C_RESET}\n")
         sys.exit(1)
+
+
+def handle_r2(args: argparse.Namespace) -> None:
+    from scripts.sync_r2 import auto_sync, pull_from_r2, push_to_r2, show_status
+    if args.action == "status":
+        show_status()
+    elif args.action == "push":
+        push_to_r2()
+    elif args.action == "pull":
+        pull_from_r2()
+    elif args.action == "auto":
+        auto_sync()
+
 
 
 # -----------------------------------------------------------------------------
@@ -1438,7 +1531,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_decisions = subparsers.add_parser("decisions", help="List logged decisions")
     p_decisions.add_argument("--status", choices=["pending", "reviewed", "abandoned"], help="Filter by status")
     p_decisions.add_argument("--project-id", type=int, help="Filter by project ID")
-    p_decisions.add_argument("--pending-review", action="store_true", help="Show decisions due for review")
+    p_decisions.add_argument("--pending-review", action="store_true", help="Show decisions due or upcoming for retrospective review")
+    p_decisions.add_argument("--window", type=int, default=30, help="Window in days for upcoming reviews (default: 30)")
     p_decisions.add_argument("--limit", type=int, default=50)
     p_decisions.set_defaults(func=handle_list_decisions)
 
@@ -1448,7 +1542,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_review_decision = subparsers.add_parser("review-decision", help="Complete a retrospective review of a decision")
     p_review_decision.add_argument("id", type=int, help="Decision ID")
-    p_review_decision.add_argument("--outcome", required=True, help="Actual outcome observed")
+    p_review_decision.add_argument("--outcome", help="Actual outcome observed (prompts interactively if omitted)")
     p_review_decision.add_argument("--status", choices=["reviewed", "abandoned"], default="reviewed", help="Updated status")
     p_review_decision.set_defaults(func=handle_review_decision)
 
@@ -1468,13 +1562,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_snapshots.set_defaults(func=handle_list_snapshots)
 
     p_insert_commitment = subparsers.add_parser("insert-commitment", help="Record a recurring financial commitment / burn")
-    p_insert_commitment.add_argument("--name", required=True, help="Commitment name (e.g. Rent, Notion Plus)")
-    p_insert_commitment.add_argument("--amount", type=float, required=True, help="Payment amount")
-    p_insert_commitment.add_argument("--category", default="saas", help="Category (housing, saas, insurance, cloud, lifestyle)")
-    p_insert_commitment.add_argument("--frequency", choices=["monthly", "yearly", "quarterly", "weekly"], default="monthly")
-    p_insert_commitment.add_argument("--currency", default="IDR")
-    p_insert_commitment.add_argument("--account-id", type=int, help="Linked payment account ID")
-    p_insert_commitment.add_argument("--renewal-date", help="Next renewal / charge date (YYYY-MM-DD)")
+    p_insert_commitment.add_argument("--name", required=True, help="Commitment name (e.g. Rent, SaaS, Gym)")
+    p_insert_commitment.add_argument("--amount", type=float, required=True, help="Recurring amount")
+    p_insert_commitment.add_argument("--frequency", choices=["monthly", "annual"], default="monthly", help="Billing cycle")
+    p_insert_commitment.add_argument("--category", default="lifestyle", help="Category (housing, cloud, lifestyle, insurance)")
+    p_insert_commitment.add_argument("--currency", default="IDR", help="Currency (default: IDR)")
     p_insert_commitment.add_argument("--notes", help="Notes")
     p_insert_commitment.set_defaults(func=handle_insert_commitment)
 
@@ -1488,15 +1580,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     # radar
     p_radar = subparsers.add_parser("radar", help="Human capital reconnection radar (detects neglected relationships)")
-    p_radar.add_argument("--tier", type=int, choices=[1, 2, 3], help="Filter by Dunbar tier")
+    p_radar.add_argument("--daily", action="store_true", help="Surface a single high-priority relationship needing touch today")
+    p_radar.add_argument("--tier", type=int, choices=[0, 1, 2, 3], help="Filter by Dunbar tier (0: Untracked, 1: Inner, 2: Core, 3: Broad)")
     p_radar.add_argument("--overdue-only", action="store_true", help="Show only overdue contacts")
     p_radar.add_argument("--limit", type=int, default=50)
     p_radar.set_defaults(func=handle_radar)
 
     p_set_tier = subparsers.add_parser("set-tier", help="Set Dunbar relationship tier and contact cadence")
     p_set_tier.add_argument("--contact-id", type=int, required=True, help="Contact ID")
-    p_set_tier.add_argument("--tier", type=int, choices=[1, 2, 3], required=True, help="Tier 1 (Inner), 2 (Core), 3 (Broad)")
-    p_set_tier.add_argument("--cadence", type=int, help="Touch cadence in days (default: 14 for T1, 60 for T2, 180 for T3)")
+    p_set_tier.add_argument("--tier", type=int, choices=[0, 1, 2, 3], required=True, help="Tier 0 (Untracked), 1 (Inner), 2 (Core), 3 (Broad)")
+    p_set_tier.add_argument("--cadence", type=int, help="Touch cadence in days (default: 0 for T0, 14 for T1, 60 for T2, 180 for T3)")
     p_set_tier.set_defaults(func=handle_set_tier)
 
     # life ops
@@ -1559,7 +1652,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_test = subparsers.add_parser("test", help="Run automated test suite")
     p_test.set_defaults(func=handle_test)
 
+    # Cloudflare R2 Sync
+    p_r2 = subparsers.add_parser("r2", help="Cloudflare R2 multi-device sync (status, push, pull, auto)")
+    p_r2.add_argument("action", choices=["status", "push", "pull", "auto"], nargs="?", default="status", help="Sync action (default: status)")
+    p_r2.set_defaults(func=handle_r2)
+
     return parser
+
 
 
 def main() -> None:

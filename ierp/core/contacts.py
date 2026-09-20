@@ -47,14 +47,14 @@ def insert_contact(
     google_id: str | None = None,
     source: str = "manual",
     date_val: str | None = None,
-    tier: int = 3,
+    tier: int = 0,
     cadence_days: int | None = None,
     db_path: Path | None = None,
 ) -> int:
     """Inserts a structured contact record directly into SQLite. Returns contacts.id."""
     init_db(db_path)
-    clean_tier = max(1, min(3, tier))
-    days = cadence_days if cadence_days and cadence_days > 0 else (14 if clean_tier == 1 else (60 if clean_tier == 2 else 180))
+    clean_tier = max(0, min(3, tier))
+    days = cadence_days if cadence_days and cadence_days > 0 else (14 if clean_tier == 1 else (60 if clean_tier == 2 else (180 if clean_tier == 3 else 0)))
 
     with closing(get_db(db_path)) as conn:
         cursor = conn.cursor()

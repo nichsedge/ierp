@@ -159,3 +159,51 @@ def delete_decision(decision_id: int, db_path: Optional[Path] = None) -> bool:
     with db_session(db_path) as cursor:
         cursor.execute("DELETE FROM decisions WHERE id = ?", (decision_id,))
         return cursor.rowcount > 0
+
+
+def get_decision_alerts(window_days: int = 7, db_path: Optional[Path] = None) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Returns decisions requiring retrospective attention:
+    - 'overdue': review_date <= date('now') and status == 'pending'
+    - 'upcoming': review_date > date('now') and review_date <= date('now', f'+{window_days} days') and status == 'pending'
+    """
+    init_db(db_path)
+    conn = get_db(db_path)
+    cursor = conn.cursor()
+
+    query = """
+    SELECT d.id, d.title, d.choice, d.expected_outcome, d.confidence, d.review_date, d.status,
+           p.title as project_title,
+           CAST(ROUND(julianday(d.review_date) - julianday(date('now'))) AS INTEGER) as days_until_review
+    FROM decisions d
+    LEFT JOIN projects p ON p.id = d.project_id
+    WHERE d.status = 'pending' AND d.review_date IS NOT NULL
+    ORDER BY d.review_date ASC
+    """
+    rows = cursor.execute(query).fetchall()
+    conn.close()
+
+    overdue = []
+    upcoming = []
+
+    for r in rows:
+        did, title, choice, exp, conf, r_date, status, p_title, days_left = r
+        item = {
+            "id": did,
+            "title": title,
+            "choice": choice,
+            "expected_outcome": exp,
+            "confidence": conf,
+            "review_date": r_date,
+            "status": status,
+            "project_title": p_title,
+            "days_until_review": days_left if days_left is not None else 0,
+        }
+        if days_left is not None and days_left <= 0:
+            item["days_overdue"] = abs(days_left)
+            overdue.append(item)
+        elif days_left is not None and days_left <= window_days:
+            upcoming.append(item)
+
+    return {"overdue": overdue, "upcoming": upcoming}
+

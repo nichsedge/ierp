@@ -13,6 +13,7 @@ from .db import db_session, get_db, init_db
 
 # Default cadences (in days) per Dunbar tier
 DEFAULT_CADENCE_BY_TIER = {
+    0: 0,    # Tier 0: Untracked / Directory only (no active cadence alarms)
     1: 14,   # Tier 1: Inner Circle (family, closest friends) -> every 2 weeks
     2: 60,   # Tier 2: Core Network (collaborators, active mentors) -> every 2 months
     3: 180,  # Tier 3: Broad Network (acquaintances, colleagues) -> every 6 months
@@ -25,10 +26,10 @@ def update_contact_cadence(
     cadence_days: Optional[int] = None,
     db_path: Optional[Path] = None,
 ) -> bool:
-    """Updates a contact's Dunbar tier (1, 2, or 3) and touch cadence in days."""
+    """Updates a contact's Dunbar tier (0, 1, 2, or 3) and touch cadence in days."""
     init_db(db_path)
-    clean_tier = max(1, min(3, tier))
-    days = cadence_days if cadence_days and cadence_days > 0 else DEFAULT_CADENCE_BY_TIER.get(clean_tier, 60)
+    clean_tier = max(0, min(3, tier))
+    days = cadence_days if cadence_days and cadence_days > 0 else DEFAULT_CADENCE_BY_TIER.get(clean_tier, 0)
 
     with db_session(db_path) as cursor:
         cursor.execute("""
@@ -49,6 +50,7 @@ def compute_radar(
     """
     Computes days since last touch for contacts by joining events and event_contacts.
     Identifies relationships requiring proactive reachout.
+    Excludes Tier 0 (untracked directory contacts) unless explicitly requested.
     """
     init_db(db_path)
     conn = get_db(db_path)
@@ -57,6 +59,8 @@ def compute_radar(
     query = """
     SELECT c.id, c.name, c.org, c.email, c.phone, c.tier, c.cadence_days,
            MAX(e.start_date) as last_seen_date,
+           c.date as contact_date,
+           c.notes,
            COUNT(e.id) as total_interactions
     FROM contacts c
     LEFT JOIN event_contacts ec ON ec.contact_id = c.id
@@ -68,6 +72,8 @@ def compute_radar(
     if tier is not None:
         query += " AND c.tier = ?"
         params.append(tier)
+    else:
+        query += " AND c.tier > 0"
 
     query += " GROUP BY c.id"
 
@@ -78,14 +84,15 @@ def compute_radar(
     results = []
 
     for r in rows:
-        cid, name, org, email, phone, c_tier, cadence, last_seen, total_interactions = r
-        c_tier = c_tier or 3
-        cadence = cadence or DEFAULT_CADENCE_BY_TIER.get(c_tier, 180)
+        cid, name, org, email, phone, c_tier, cadence, last_seen, contact_date, notes, total_interactions = r
+        c_tier = c_tier if c_tier is not None else 0
+        cadence = cadence if (cadence is not None and cadence > 0) else DEFAULT_CADENCE_BY_TIER.get(c_tier, 0)
 
-        if last_seen:
+        effective_date_str = last_seen or contact_date
+        if effective_date_str:
             try:
                 # Handle YYYY-MM-DD or YYYY-MM-DD HH:MM:SS
-                dt_str = last_seen[:10]
+                dt_str = effective_date_str[:10]
                 last_dt = datetime.strptime(dt_str, "%Y-%m-%d")
                 days_since = (now - last_dt).days
             except ValueError:
@@ -93,8 +100,12 @@ def compute_radar(
         else:
             days_since = 999  # Never met in logged events
 
-        is_overdue = days_since > cadence
-        days_overdue = max(0, days_since - cadence)
+        if c_tier == 0 or not cadence:
+            is_overdue = False
+            days_overdue = 0
+        else:
+            is_overdue = days_since > cadence
+            days_overdue = max(0, days_since - cadence)
 
         if overdue_only and not is_overdue:
             continue
@@ -107,16 +118,33 @@ def compute_radar(
             "phone": phone,
             "tier": c_tier,
             "cadence_days": cadence,
-            "last_seen_date": last_seen,
+            "last_seen_date": last_seen or contact_date,
             "days_since_last_touch": days_since,
             "is_overdue": is_overdue,
             "days_overdue": days_overdue,
             "total_interactions": total_interactions,
+            "notes": notes,
         })
 
     # Sort: Tier 1 first, then highest days_overdue, then highest days_since
     results.sort(key=lambda x: (x["tier"], -x["days_overdue"], -x["days_since_last_touch"]))
     return results[offset : offset + limit]
+
+
+def get_daily_reconnection(db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    """
+    Selects a single high-priority relationship needing attention today.
+    Priority order:
+    1. Tier 1 contacts overdue (sorted by most days overdue)
+    2. Tier 2 contacts overdue (sorted by most days overdue)
+    3. Tier 3 contacts overdue (sorted by most days overdue)
+    Returns None if no contacts in Tiers 1-3 are overdue.
+    """
+    for t in [1, 2, 3]:
+        overdue = compute_radar(tier=t, overdue_only=True, limit=1, db_path=db_path)
+        if overdue:
+            return overdue[0]
+    return None
 
 
 def get_radar_summary(db_path: Optional[Path] = None) -> Dict[str, Any]:

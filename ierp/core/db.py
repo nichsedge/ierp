@@ -212,9 +212,9 @@ def init_db(db_path: Path | None = None, verbose: bool = False) -> None:
         if "source" not in cols:
             cursor.execute("ALTER TABLE contacts ADD COLUMN source TEXT DEFAULT 'manual'")
         if "tier" not in cols:
-            cursor.execute("ALTER TABLE contacts ADD COLUMN tier INTEGER DEFAULT 3")
+            cursor.execute("ALTER TABLE contacts ADD COLUMN tier INTEGER DEFAULT 0")
         if "cadence_days" not in cols:
-            cursor.execute("ALTER TABLE contacts ADD COLUMN cadence_days INTEGER DEFAULT 60")
+            cursor.execute("ALTER TABLE contacts ADD COLUMN cadence_days INTEGER DEFAULT 0")
         cursor.execute("""
         UPDATE contacts
         SET source = CASE
@@ -257,25 +257,52 @@ def init_db(db_path: Path | None = None, verbose: bool = False) -> None:
 
     # Data Migration: Move vendor records erroneously stored in contacts
     try:
-        cursor.execute("SELECT id, name, location, notes, source FROM contacts WHERE id = 311 OR name = 'ASA Tours and Travel'")
-        rows = cursor.fetchall()
-        for cid, cname, cloc, cnotes, csrc in rows:
-            cursor.execute("SELECT id FROM vendors WHERE name = ?", (cname,))
-            if not cursor.fetchone():
-                cursor.execute("""
-                INSERT INTO vendors (name, category, location, phone, notes, favorite, source)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    cname,
-                    "Motorbike Rental",
-                    cloc or "Bali, Indonesia",
-                    "+62 851-7300-3683",
-                    cnotes or "Favorite motorbike rental vendor/seller in Bali",
-                    1,
-                    csrc or "manual"
-                ))
-            cursor.execute("DELETE FROM event_contacts WHERE contact_id = ?", (cid,))
-            cursor.execute("DELETE FROM contacts WHERE id = ?", (cid,))
+        vendor_entries = [
+            ("ASA Tours and Travel", "Motorbike Rental", "Bali, Indonesia", "+62 851-7300-3683", "Favorite motorbike rental in Bali"),
+            ("Nasgor Sekayu", "Culinary", "Jakarta, Indonesia", None, None),
+            ("Nasgor R3 Gambiran", "Culinary", "Yogyakarta, Indonesia", None, None),
+            ("Warteg Gambiran", "Culinary", "Yogyakarta, Indonesia", None, None),
+            ("Warung Maya Pancasila", "Culinary", "Tasikmalaya, Indonesia", None, None),
+            ("Warung Yulex", "Culinary", "Indonesia", None, None),
+            ("Laundry Jagalan", "Services", "Yogyakarta, Indonesia", None, None),
+            ("IT Servicedesk Telkomsel", "IT Support", "Indonesia", None, None),
+            ("Kost Benhil", "Housing", "Jakarta, Indonesia", None, None),
+            ("Klinik UI", "Healthcare", "Depok, Indonesia", None, None),
+            ("Pandawa Bpjs", "Services", "Indonesia", None, None),
+            ("Grab Supoort", "Transport", "Indonesia", None, None),
+            ("Cod Rothko", "Commerce", "Indonesia", None, None),
+            ("Data Transaksi", "Utility", "Indonesia", None, None),
+            ("Beli", "Utility", "Indonesia", None, None),
+            ("Service", "Utility", "Indonesia", None, None),
+        ]
+        for vname, vcat, vloc, vphone, vnotes in vendor_entries:
+            cursor.execute("SELECT id, name, location, notes, source, phone, email FROM contacts WHERE LOWER(name) = LOWER(?)", (vname,))
+            rows = cursor.fetchall()
+            for cid, cname, cloc, cnotes, csrc, cphone, cemail in rows:
+                cursor.execute("SELECT id FROM vendors WHERE LOWER(name) = LOWER(?)", (cname,))
+                if not cursor.fetchone():
+                    cursor.execute("""
+                    INSERT INTO vendors (name, category, location, phone, email, notes, favorite, source)
+                    VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+                    """, (cname, vcat, cloc or vloc, cphone or vphone, cemail, cnotes or vnotes, csrc or "migrated"))
+                cursor.execute("DELETE FROM event_contacts WHERE contact_id = ?", (cid,))
+                cursor.execute("DELETE FROM contacts WHERE id = ?", (cid,))
+
+        # Data Migration: Demote unclassified contacts without events from Tier 3 to Tier 0 (Untracked Directory)
+        cursor.execute("""
+        UPDATE contacts
+        SET tier = 0, cadence_days = 0
+        WHERE tier = 3
+          AND id NOT IN (SELECT DISTINCT contact_id FROM event_contacts)
+          AND id NOT IN (1, 8, 11, 14);
+        """)
+
+        # Data Migration: Set proper 180-day cadence for remaining Tier 3 contacts with logged interactions
+        cursor.execute("""
+        UPDATE contacts
+        SET cadence_days = 180
+        WHERE tier = 3 AND (cadence_days IS NULL OR cadence_days = 60);
+        """)
     except Exception:
         pass
 

@@ -96,11 +96,11 @@ uv run ierp dashboard
 | `uv run ierp projects` | List projects with linked event and decision counts. |
 | `uv run ierp show-project <ID\|slug>` | Show full project details with linked events and decisions. |
 | `uv run ierp insert-decision` | Record a choice in the decision journal (`--title`, `--choice`, `--confidence`, `--review-date`). |
-| `uv run ierp decisions` | List logged decisions with review status filters (`--pending-review`). |
+| `uv run ierp decisions` | List logged decisions with review status filters (`--pending-review`, `--window <days>`). |
 | `uv run ierp show-decision <ID>` | Show full decision context, choice, hypotheses, and post-review outcome. |
-| `uv run ierp review-decision <ID>` | Conduct a retrospective review on a decision (`--outcome`, `--status`). |
-| `uv run ierp radar` | Display relationship reconnection radar with overdue touchpoint alerts. |
-| `uv run ierp set-tier` | Set Dunbar tier (1, 2, 3) and touch cadence in days for a contact. |
+| `uv run ierp review-decision <ID>` | Conduct a retrospective review on a decision (`--outcome` optional; prompts interactively). |
+| `uv run ierp radar` | Display relationship reconnection radar (`--overdue-only`, `--daily` for 1-contact focus). |
+| `uv run ierp set-tier` | Set Dunbar tier (0: Untracked, 1: Inner, 2: Core, 3: Broad) and touch cadence for a contact. |
 | `uv run ierp insert-maintenance` | Schedule a maintenance task or document expiration (`--name`, `--due-date`, `--interval`). |
 | `uv run ierp maintenance` | List maintenance tasks with overdue highlighting (`--due-within <days>`). |
 | `uv run ierp complete-maintenance <ID>` | Mark maintenance task complete (auto-schedules next occurrence if interval set). |
@@ -126,7 +126,9 @@ uv run ierp dashboard
 | `uv run ierp pay` | List payment accounts and banking nodes. |
 | `uv run ierp referrals` | List referral codes and affiliate links. |
 | `uv run ierp dashboard [--port 8000]` | Start web dashboard server with live GPS webhook receiver. |
+| `uv run ierp r2 [action]` | Multi-device sync with Cloudflare R2 (`status`, `push`, `pull`, `auto`). |
 | `uv run ierp test` | Run automated unit and integration test suite. |
+
 
 ---
 
