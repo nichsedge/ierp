@@ -64,6 +64,10 @@ def main() -> int:
         conn.close()
 
     data_dir = Path(PORTFOLIO_DATA)
+    if not data_dir.exists():
+        print(f"Target portfolio data directory not found at {data_dir}. Skipping commerce export.")
+        return 0
+
     for fname, data in targets.items():
         path = data_dir / fname
         if args.check:
