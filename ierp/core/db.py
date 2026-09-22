@@ -483,6 +483,44 @@ def init_db(db_path: Path | None = None, verbose: bool = False) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_gadgets_category ON gadgets(category);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_gadgets_slug ON gadgets(slug);")
 
+    # GitHub Repositories (SSOT for public / collaborator repos)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS github_repositories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        repo_id TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        full_name TEXT UNIQUE NOT NULL,
+        owner_login TEXT,
+        owner_url TEXT,
+        html_url TEXT,
+        homepage TEXT,
+        description TEXT,
+        topics TEXT,
+        language TEXT,
+        private INTEGER DEFAULT 0,
+        fork INTEGER DEFAULT 0,
+        archived INTEGER DEFAULT 0,
+        template INTEGER DEFAULT 0,
+        disabled INTEGER DEFAULT 0,
+        created_at TEXT,
+        updated_at TEXT,
+        pushed_at TEXT,
+        default_branch TEXT,
+        default_branch_oid TEXT,
+        stargazers_count INTEGER DEFAULT 0,
+        watchers_count INTEGER DEFAULT 0,
+        forks_count INTEGER DEFAULT 0,
+        open_issues_count INTEGER DEFAULT 0,
+        open_prs_count INTEGER DEFAULT 0,
+        license_spdx TEXT,
+        license_name TEXT,
+        synced_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_gh_repos_name ON github_repositories(name);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_gh_repos_full_name ON github_repositories(full_name);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_gh_repos_updated_at ON github_repositories(updated_at);")
+
     # SQLite FTS5 Full-Text Search Virtual Table & Real-Time Sync Triggers
     cursor.execute("""
     CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(

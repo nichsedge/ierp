@@ -7,7 +7,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 import sys
 
@@ -928,7 +928,7 @@ class TestIERP(unittest.TestCase):
         # Log an event with this contact today
         insert_event(
             title="Catch up coffee with Budi",
-            start_date=datetime.now().strftime("%Y-%m-%d"),
+            start_date=date.today().isoformat(),
             contacts=[cid],
             db_path=self.db_path,
         )
@@ -1234,6 +1234,56 @@ class TestIERP(unittest.TestCase):
         self.assertIn(d_upcoming, upcoming_ids)
         self.assertNotIn(d_far, overdue_ids)
         self.assertNotIn(d_far, upcoming_ids)
+
+    def test_github_repositories_lifecycle_and_export(self):
+        """Verifies github_repositories schema initialization, upsert, and export logic."""
+        from scripts.export_gh_projects import export_repos
+        from scripts.sync_github_repos import upsert_repositories
+
+        sample_repo = {
+            "repo_id": "R_test123",
+            "name": "test-repo",
+            "full_name": "nichsedge/test-repo",
+            "owner_login": "nichsedge",
+            "owner_url": "https://github.com/nichsedge",
+            "html_url": "https://github.com/nichsedge/test-repo",
+            "homepage": "https://example.com",
+            "description": "Test repository",
+            "topics": json.dumps(["test", "python"]),
+            "language": "Python",
+            "private": 0,
+            "fork": 0,
+            "archived": 0,
+            "template": 0,
+            "disabled": 0,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-09-22T00:00:00Z",
+            "pushed_at": "2026-09-22T00:00:00Z",
+            "default_branch": "main",
+            "default_branch_oid": "abc1234",
+            "stargazers_count": 5,
+            "watchers_count": 5,
+            "forks_count": 1,
+            "open_issues_count": 0,
+            "open_prs_count": 0,
+            "license_spdx": "MIT",
+            "license_name": "MIT License",
+        }
+
+        upsert_repositories(self.db_path, [sample_repo])
+
+        conn = get_db(self.db_path)
+        try:
+            exported = export_repos(conn)
+            self.assertEqual(len(exported), 1)
+            repo = exported[0]
+            self.assertEqual(repo["id"], "R_test123")
+            self.assertEqual(repo["name"], "test-repo")
+            self.assertEqual(repo["topics"], ["test", "python"])
+            self.assertFalse(repo["private"])
+            self.assertEqual(repo["stargazers_count"], 5)
+        finally:
+            conn.close()
 
 
 def run_tests():
