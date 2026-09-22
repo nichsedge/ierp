@@ -18,7 +18,7 @@
 iERP is the **Central Single Source of Truth (SSOT) for Structured Personal ERP Data** across the entire workstation ([`~/Projects/DATA_ARCHITECTURE.md`](file:///home/al/Projects/DATA_ARCHITECTURE.md)):
 
 * **Downstream Export Pipelines**:
-  * **Digital Graveyard Export**: `uv run scripts/export_garden.py` regenerates media consumption notes (`content/Read/`, `content/Watch/`), social/profile links (`content/Write/Links.md`), and hardware notes (`content/Personal/Gadgets/`) in `~/Projects/digital-graveyard`.
+  * **Digital Graveyard Export**: `uv run scripts/export_garden.py` regenerates media consumption notes (`content/Read/`, `content/Watch/`), social/profile links (`content/Write/Links.md`), hardware notes (`content/Knowledge/Entities/Gadget/`), strategic initiatives (`content/Knowledge/Projects/`), decision journals (`content/Knowledge/Decisions/`), and retrospectives (`content/Write/Retrospectives/`) in `~/Projects/digital-graveyard`.
   * **Commerce Export**: `uv run scripts/export_commerce.py` regenerates `pay.json` (payment accounts) and `referrals.json` (affiliate codes) in `~/Projects/nichsedge.github.io/data/`.
   * **Cloudflare R2 Backup**: `python3 scripts/backup_r2.py` performs atomic SQLite backup and uploads `db/ierp_latest.sqlite` and timestamped snapshots to Cloudflare R2 (`ichsanul-dev`).
 * **Upstream Intake**:

@@ -359,8 +359,8 @@ def import_garden_gadgets(garden_dir: Path | str | None = None, db_path: Path | 
     """
     if garden_dir is None:
         possible = [
-            Path.home() / "Projects" / "digital-garden" / "content" / "Knowledge" / "Entities" / "Gadget",
             Path.home() / "Projects" / "digital-graveyard" / "content" / "Knowledge" / "Entities" / "Gadget",
+            Path.home() / "Projects" / "digital-garden" / "content" / "Knowledge" / "Entities" / "Gadget",
         ]
         for p in possible:
             if p.is_dir():
@@ -452,15 +452,15 @@ def export_garden_gadgets(
     """
     if garden_dir is None:
         possible = [
-            Path.home() / "Projects" / "digital-garden" / "content" / "Knowledge" / "Entities" / "Gadget",
             Path.home() / "Projects" / "digital-graveyard" / "content" / "Knowledge" / "Entities" / "Gadget",
+            Path.home() / "Projects" / "digital-garden" / "content" / "Knowledge" / "Entities" / "Gadget",
         ]
         for p in possible:
             if p.is_dir():
                 garden_dir = p
                 break
         if garden_dir is None:
-            garden_dir = Path.home() / "Projects" / "digital-garden" / "content" / "Knowledge" / "Entities" / "Gadget"
+            garden_dir = Path.home() / "Projects" / "digital-graveyard" / "content" / "Knowledge" / "Entities" / "Gadget"
 
     target_dir = Path(garden_dir)
     if not dry_run:

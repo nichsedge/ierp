@@ -7,6 +7,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 import sys
 
@@ -927,7 +928,7 @@ class TestIERP(unittest.TestCase):
         # Log an event with this contact today
         insert_event(
             title="Catch up coffee with Budi",
-            start_date="2026-09-07",
+            start_date=datetime.now().strftime("%Y-%m-%d"),
             contacts=[cid],
             db_path=self.db_path,
         )

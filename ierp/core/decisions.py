@@ -68,7 +68,7 @@ def get_decision(decision_id: int, db_path: Optional[Path] = None) -> Optional[D
     row = cursor.execute("""
     SELECT d.id, d.title, d.context, d.choice, d.expected_outcome, d.confidence, 
            d.review_date, d.actual_outcome, d.status, d.project_id, d.created_at, d.updated_at,
-           p.title as project_title
+           p.title as project_title, p.slug as project_slug
     FROM decisions d
     LEFT JOIN projects p ON p.id = d.project_id
     WHERE d.id = ?
@@ -92,6 +92,7 @@ def get_decision(decision_id: int, db_path: Optional[Path] = None) -> Optional[D
         "created_at": row[10],
         "updated_at": row[11],
         "project_title": row[12],
+        "project_slug": row[13],
     }
 
 
@@ -111,7 +112,7 @@ def list_decisions(
     query = """
     SELECT d.id, d.title, d.context, d.choice, d.expected_outcome, d.confidence, 
            d.review_date, d.actual_outcome, d.status, d.project_id, d.created_at, d.updated_at,
-           p.title as project_title
+           p.title as project_title, p.slug as project_slug
     FROM decisions d
     LEFT JOIN projects p ON p.id = d.project_id
     WHERE 1=1
@@ -148,6 +149,7 @@ def list_decisions(
             "created_at": r[10],
             "updated_at": r[11],
             "project_title": r[12],
+            "project_slug": r[13],
         }
         for r in rows
     ]

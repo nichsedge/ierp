@@ -151,7 +151,7 @@ def export_garden_projects(
         fm = {
             "title": title,
             "date": start_date,
-            "tags": ["project", "initiative", "ierp"],
+            "tags": ["project"],
             "publish_external": bool(details.get("publish_external", False)),
             "status": "seedling",
             "project_status": status,
@@ -204,9 +204,9 @@ def export_garden_projects(
     # Generate Knowledge/Projects/index.md
     index_file = target_dir / "index.md"
     index_fm = {
-        "title": "Projects",
+        "title": "Strategic Projects",
         "date": datetime.now().strftime("%Y-%m-%d"),
-        "tags": ["moc", "projects"],
+        "tags": ["project"],
         "publish_external": False,
     }
     index_body = [
@@ -272,7 +272,7 @@ def export_garden_decisions(
         fm = {
             "title": title,
             "date": date_str,
-            "tags": ["decision", "pdr", "judgment"],
+            "tags": ["note"],
             "publish_external": bool(d.get("publish_external", False)),
             "status": "seedling",
             "decision_status": status,
@@ -289,7 +289,7 @@ def export_garden_decisions(
             f"- **Review Date:** `{review_date}`",
         ]
         if proj_title:
-            p_slug = slugify(proj_title)
+            p_slug = d.get("project_slug") or slugify(proj_title)
             body_parts.append(f"- **Linked Project:** [[Knowledge/Projects/{p_slug}|{proj_title}]]")
 
         body_parts.extend([
@@ -321,7 +321,7 @@ def export_garden_decisions(
     index_fm = {
         "title": "Decision Journal",
         "date": datetime.now().strftime("%Y-%m-%d"),
-        "tags": ["moc", "decisions", "pdr"],
+        "tags": ["note"],
         "publish_external": False,
     }
     index_body = [
@@ -387,7 +387,7 @@ def export_garden_reviews(
         fm = {
             "title": note_title,
             "date": p_end,
-            "tags": ["retrospective", "review", "lifeops"],
+            "tags": ["review"],
             "publish_external": bool(r.get("publish_external", False)),
             "period_type": p_type,
             "rating": rating,
@@ -426,7 +426,7 @@ def export_garden_reviews(
     index_fm = {
         "title": "Retrospectives & Sprint Reviews",
         "date": datetime.now().strftime("%Y-%m-%d"),
-        "tags": ["moc", "retrospective"],
+        "tags": ["review"],
         "publish_external": False,
     }
     index_body = [
