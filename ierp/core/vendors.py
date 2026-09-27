@@ -71,6 +71,9 @@ def list_vendors(
 
     where_sql = " AND ".join(where_clauses)
     direction = "ASC" if str(sort_dir).upper() == "ASC" else "DESC"
+    valid_sort_cols = {"v.id", "v.name", "v.category", "v.location", "v.favorite", "v.created_at"}
+    if sort_col not in valid_sort_cols:
+        sort_col = "v.favorite"
 
     with closing(get_db(db_path)) as conn:
         cursor = conn.cursor()
@@ -158,6 +161,62 @@ def toggle_vendor_favorite(
 
         row = cursor.execute("SELECT favorite FROM vendors WHERE id = ?", (vendor_id,)).fetchone()
         return bool(row[0]) if row else None
+
+
+def update_vendor(
+    vendor_id: int,
+    name: str | None = None,
+    category: str | None = None,
+    location: str | None = None,
+    phone: str | None = None,
+    email: str | None = None,
+    url: str | None = None,
+    notes: str | None = None,
+    favorite: bool | None = None,
+    db_path: Path | None = None,
+) -> bool:
+    """Updates fields of an existing vendor record. Returns True if updated."""
+    init_db(db_path)
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
+        existing = cursor.execute("SELECT id FROM vendors WHERE id = ?", (vendor_id,)).fetchone()
+        if not existing:
+            return False
+
+        updates: list[str] = []
+        params: list[Any] = []
+
+        if name is not None:
+            updates.append("name = ?")
+            params.append(name.strip())
+        if category is not None:
+            updates.append("category = ?")
+            params.append(category.strip())
+        if location is not None:
+            updates.append("location = ?")
+            params.append(location)
+        if phone is not None:
+            updates.append("phone = ?")
+            params.append(phone)
+        if email is not None:
+            updates.append("email = ?")
+            params.append(email)
+        if url is not None:
+            updates.append("url = ?")
+            params.append(url)
+        if notes is not None:
+            updates.append("notes = ?")
+            params.append(notes)
+        if favorite is not None:
+            updates.append("favorite = ?")
+            params.append(1 if favorite else 0)
+
+        if updates:
+            params.append(vendor_id)
+            cursor.execute(f"UPDATE vendors SET {', '.join(updates)} WHERE id = ?", params)
+            conn.commit()
+
+        return True
 
 
 def delete_vendor(vendor_id: int, db_path: Path | None = None) -> bool:

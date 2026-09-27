@@ -101,7 +101,6 @@ def insert_payment_account(
     """Inserts or updates a payment account record in SQLite. Returns payment_accounts.id."""
     with closing(get_db(db_path)) as conn:
         cur = conn.cursor()
-        init_tables(cur)
         pid = upsert_payment_account(
             cur,
             slug=slug,
@@ -115,6 +114,45 @@ def insert_payment_account(
         conn.commit()
         return pid
 
+
+def delete_payment_account(account_id: int, db_path: Optional[Path] = None) -> bool:
+    """Deletes a payment account by ID. Returns True if row was deleted."""
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM payment_accounts WHERE id = ?", (account_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def get_payment_account(identifier: str | int, db_path: Optional[Path] = None) -> Optional[dict]:
+    """Retrieves a single payment account by ID or slug."""
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
+        if isinstance(identifier, int) or (isinstance(identifier, str) and identifier.isdigit()):
+            row = cursor.execute("""
+                SELECT id, slug, name, category, number, recipient, details, details_id, created_at, updated_at
+                FROM payment_accounts WHERE id = ?
+            """, (int(identifier),)).fetchone()
+        else:
+            row = cursor.execute("""
+                SELECT id, slug, name, category, number, recipient, details, details_id, created_at, updated_at
+                FROM payment_accounts WHERE slug = ?
+            """, (str(identifier),)).fetchone()
+
+        if not row:
+            return None
+        return {
+            "id": row[0],
+            "slug": row[1],
+            "name": row[2],
+            "category": row[3],
+            "number": row[4],
+            "recipient": row[5],
+            "details": row[6],
+            "details_id": row[7],
+            "created_at": row[8],
+            "updated_at": row[9],
+        }
 
 
 def upsert_referral(
@@ -144,10 +182,50 @@ def upsert_referral(
     return int(cursor.lastrowid or 0)
 
 
-def _query(db_path: Optional[Path], sql: str, params: list) -> list:
-    """Ensures schema exists, then runs a read query on a short-lived connection."""
+def delete_referral(referral_id: int, db_path: Optional[Path] = None) -> bool:
+    """Deletes a referral code by ID. Returns True if row was deleted."""
     with closing(get_db(db_path)) as conn:
-        init_tables(conn.cursor())
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM referrals WHERE id = ?", (referral_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def get_referral(identifier: str | int, db_path: Optional[Path] = None) -> Optional[dict]:
+    """Retrieves a single referral code by ID or slug."""
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
+        if isinstance(identifier, int) or (isinstance(identifier, str) and identifier.isdigit()):
+            row = cursor.execute("""
+                SELECT id, slug, name, category, code, link, benefit, status, is_public, created_at, updated_at
+                FROM referrals WHERE id = ?
+            """, (int(identifier),)).fetchone()
+        else:
+            row = cursor.execute("""
+                SELECT id, slug, name, category, code, link, benefit, status, is_public, created_at, updated_at
+                FROM referrals WHERE slug = ?
+            """, (str(identifier),)).fetchone()
+
+        if not row:
+            return None
+        return {
+            "id": row[0],
+            "slug": row[1],
+            "name": row[2],
+            "category": row[3],
+            "code": row[4],
+            "link": row[5],
+            "benefit": row[6],
+            "status": row[7],
+            "is_public": bool(row[8]),
+            "created_at": row[9],
+            "updated_at": row[10],
+        }
+
+
+def _query(db_path: Optional[Path], sql: str, params: list) -> list:
+    """Runs a read query on a short-lived connection."""
+    with closing(get_db(db_path)) as conn:
         return conn.execute(sql, params).fetchall()
 
 

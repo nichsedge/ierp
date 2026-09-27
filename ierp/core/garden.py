@@ -12,7 +12,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .config import DB_PATH
 from .decisions import list_decisions
 from .gadgets import export_garden_gadgets
 from .projects import get_project_summary, list_projects

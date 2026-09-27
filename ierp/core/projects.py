@@ -34,21 +34,21 @@ def insert_project(
     init_db(db_path)
     clean_slug = slug or generate_project_slug(title)
 
-    # Ensure unique slug
-    conn = get_db(db_path)
-    cursor = conn.cursor()
-    existing = cursor.execute("SELECT id FROM projects WHERE slug = ?", (clean_slug,)).fetchone()
-    if existing:
-        clean_slug = f"{clean_slug}-{int(datetime.now().timestamp())}"
+    from contextlib import closing
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
+        # Ensure unique slug atomically within the same connection
+        existing = cursor.execute("SELECT id FROM projects WHERE slug = ?", (clean_slug,)).fetchone()
+        if existing:
+            clean_slug = f"{clean_slug}-{int(datetime.now().timestamp())}"
 
-    cursor.execute("""
-    INSERT INTO projects (slug, title, description, status, priority, start_date, target_date)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (clean_slug, title.strip(), description, status, priority, start_date, target_date))
-    pid = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return pid
+        cursor.execute("""
+        INSERT INTO projects (slug, title, description, status, priority, start_date, target_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (clean_slug, title.strip(), description, status, priority, start_date, target_date))
+        pid = cursor.lastrowid
+        conn.commit()
+        return pid
 
 
 def update_project(
@@ -99,21 +99,21 @@ def update_project(
 def get_project(identifier: Any, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
     """Retrieves a single project by ID (int) or slug (str)."""
     init_db(db_path)
-    conn = get_db(db_path)
-    cursor = conn.cursor()
+    from contextlib import closing
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
 
-    if isinstance(identifier, int) or (isinstance(identifier, str) and identifier.isdigit()):
-        row = cursor.execute("""
-        SELECT id, slug, title, description, status, priority, start_date, target_date, created_at, updated_at
-        FROM projects WHERE id = ?
-        """, (int(identifier),)).fetchone()
-    else:
-        row = cursor.execute("""
-        SELECT id, slug, title, description, status, priority, start_date, target_date, created_at, updated_at
-        FROM projects WHERE slug = ?
-        """, (str(identifier),)).fetchone()
+        if isinstance(identifier, int) or (isinstance(identifier, str) and identifier.isdigit()):
+            row = cursor.execute("""
+            SELECT id, slug, title, description, status, priority, start_date, target_date, created_at, updated_at
+            FROM projects WHERE id = ?
+            """, (int(identifier),)).fetchone()
+        else:
+            row = cursor.execute("""
+            SELECT id, slug, title, description, status, priority, start_date, target_date, created_at, updated_at
+            FROM projects WHERE slug = ?
+            """, (str(identifier),)).fetchone()
 
-    conn.close()
     if not row:
         return None
 
@@ -140,33 +140,33 @@ def list_projects(
 ) -> List[Dict[str, Any]]:
     """Lists projects with optional status and priority filtering."""
     init_db(db_path)
-    conn = get_db(db_path)
-    cursor = conn.cursor()
+    from contextlib import closing
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
 
-    query = """
-    SELECT p.id, p.slug, p.title, p.description, p.status, p.priority, 
-           p.start_date, p.target_date, p.created_at, p.updated_at,
-           COUNT(DISTINCT e.id) as event_count,
-           COUNT(DISTINCT d.id) as decision_count
-    FROM projects p
-    LEFT JOIN events e ON e.project_id = p.id
-    LEFT JOIN decisions d ON d.project_id = p.id
-    WHERE 1=1
-    """
-    params: List[Any] = []
+        query = """
+        SELECT p.id, p.slug, p.title, p.description, p.status, p.priority, 
+               p.start_date, p.target_date, p.created_at, p.updated_at,
+               COUNT(DISTINCT e.id) as event_count,
+               COUNT(DISTINCT d.id) as decision_count
+        FROM projects p
+        LEFT JOIN events e ON e.project_id = p.id
+        LEFT JOIN decisions d ON d.project_id = p.id
+        WHERE 1=1
+        """
+        params: List[Any] = []
 
-    if status:
-        query += " AND p.status = ?"
-        params.append(status)
-    if priority:
-        query += " AND p.priority = ?"
-        params.append(priority)
+        if status:
+            query += " AND p.status = ?"
+            params.append(status)
+        if priority:
+            query += " AND p.priority = ?"
+            params.append(priority)
 
-    query += " GROUP BY p.id ORDER BY p.updated_at DESC LIMIT ? OFFSET ?"
-    params.extend([limit, offset])
+        query += " GROUP BY p.id ORDER BY p.updated_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
 
-    rows = cursor.execute(query, params).fetchall()
-    conn.close()
+        rows = cursor.execute(query, params).fetchall()
 
     return [
         {
@@ -203,20 +203,19 @@ def get_project_summary(project_id: int, db_path: Optional[Path] = None) -> Opti
     if not proj:
         return None
 
-    conn = get_db(db_path)
-    cursor = conn.cursor()
+    from contextlib import closing
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
 
-    events = cursor.execute("""
-    SELECT id, title, place, start_date, tags FROM events
-    WHERE project_id = ? ORDER BY start_date DESC LIMIT 25
-    """, (proj["id"],)).fetchall()
+        events = cursor.execute("""
+        SELECT id, title, place, start_date, tags FROM events
+        WHERE project_id = ? ORDER BY start_date DESC LIMIT 25
+        """, (proj["id"],)).fetchall()
 
-    decisions = cursor.execute("""
-    SELECT id, title, choice, confidence, review_date, status FROM decisions
-    WHERE project_id = ? ORDER BY review_date ASC LIMIT 25
-    """, (proj["id"],)).fetchall()
-
-    conn.close()
+        decisions = cursor.execute("""
+        SELECT id, title, choice, confidence, review_date, status FROM decisions
+        WHERE project_id = ? ORDER BY review_date ASC LIMIT 25
+        """, (proj["id"],)).fetchall()
 
     proj["events"] = [
         {"id": e[0], "title": e[1], "place": e[2], "start_date": e[3], "tags": e[4]}

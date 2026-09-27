@@ -1332,7 +1332,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_insert_contact.add_argument("--email", help="Contact email address")
     p_insert_contact.add_argument("--phone", help="Contact phone number")
     p_insert_contact.add_argument("--notes", help="Contact notes or background")
-    p_insert_contact.add_argument("--tier", type=int, choices=[1, 2, 3], default=3, help="Dunbar relationship tier (1, 2, 3)")
+    p_insert_contact.add_argument("--tier", type=int, choices=[0, 1, 2, 3], default=3, help="Dunbar relationship tier (0: untracked, 1: inner, 2: core, 3: broad)")
     p_insert_contact.add_argument("--cadence", type=int, help="Touchpoint cadence in days")
     p_insert_contact.set_defaults(func=handle_insert_contact)
 
@@ -1345,7 +1345,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_update_contact.add_argument("--email", help="New contact email address")
     p_update_contact.add_argument("--phone", help="New contact phone number")
     p_update_contact.add_argument("--notes", help="New contact notes or background")
-    p_update_contact.add_argument("--tier", type=int, choices=[1, 2, 3], help="New Dunbar relationship tier (1, 2, 3)")
+    p_update_contact.add_argument("--tier", type=int, choices=[0, 1, 2, 3], help="New Dunbar relationship tier (0: untracked, 1: inner, 2: core, 3: broad)")
     p_update_contact.add_argument("--cadence", type=int, help="New touchpoint cadence in days")
     p_update_contact.set_defaults(func=handle_update_contact)
 

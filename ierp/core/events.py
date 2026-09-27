@@ -214,6 +214,9 @@ def list_events(
 
     where_sql = " AND ".join(where_clauses)
     direction = "ASC" if str(sort_dir).upper() == "ASC" else "DESC"
+    valid_sort_cols = {"e.id", "e.title", "e.place", "e.start_date", "e.end_date", "e.created_at"}
+    if sort_col not in valid_sort_cols:
+        sort_col = "e.start_date"
 
     with closing(get_db(db_path)) as conn:
         cursor = conn.cursor()
@@ -228,6 +231,22 @@ def list_events(
         """
         rows = cursor.execute(fetch_sql, [*params, limit, offset]).fetchall()
 
+        # Batch-fetch all linked contacts in one query instead of N+1
+        event_ids = [r[0] for r in rows]
+        contacts_map: dict[int, list[dict[str, Any]]] = {eid: [] for eid in event_ids}
+        if event_ids:
+            placeholders = ",".join("?" * len(event_ids))
+            contact_rows = cursor.execute(
+                f"""
+                SELECT ec.event_id, c.id, c.name FROM contacts c
+                JOIN event_contacts ec ON c.id = ec.contact_id
+                WHERE ec.event_id IN ({placeholders})
+                """,
+                event_ids,
+            ).fetchall()
+            for ev_id, cid, cname in contact_rows:
+                contacts_map[ev_id].append({"id": cid, "name": cname})
+
         events = []
         for r in rows:
             ev_id, title, place, start, end, raw_d, tags_json, notes, created_at = r
@@ -235,15 +254,6 @@ def list_events(
                 tags_data = json.loads(tags_json) if tags_json else []
             except Exception:
                 tags_data = []
-
-            linked_contacts = cursor.execute(
-                """
-                SELECT c.id, c.name FROM contacts c
-                JOIN event_contacts ec ON c.id = ec.contact_id
-                WHERE ec.event_id = ?
-                """,
-                (ev_id,),
-            ).fetchall()
 
             events.append({
                 "id": ev_id,
@@ -255,7 +265,7 @@ def list_events(
                 "tags": tags_data,
                 "notes": notes,
                 "created_at": created_at,
-                "linked_contacts": [{"id": cid, "name": cname} for cid, cname in linked_contacts],
+                "linked_contacts": contacts_map.get(ev_id, []),
             })
 
     return events, total

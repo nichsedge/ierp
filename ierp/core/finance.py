@@ -38,22 +38,22 @@ def insert_snapshot(
 def list_snapshots(limit: int = 30, db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
     """Lists net worth snapshots in chronological order."""
     init_db(db_path)
-    conn = get_db(db_path)
-    cursor = conn.cursor()
-    rows = cursor.execute("""
-    SELECT id, snapshot_date, liquid_cash, investments, hard_assets, liabilities, currency, notes, created_at
-    FROM networth_snapshots
-    ORDER BY snapshot_date DESC, id DESC
-    LIMIT ?
-    """, (limit,)).fetchall()
-    conn.close()
+    from contextlib import closing
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
+        rows = cursor.execute("""
+        SELECT id, snapshot_date, liquid_cash, investments, hard_assets, liabilities, currency, notes, created_at
+        FROM networth_snapshots
+        ORDER BY snapshot_date DESC, id DESC
+        LIMIT ?
+        """, (limit,)).fetchall()
 
     results = []
     for r in rows:
-        liquid = r[2] or 0.0
-        invest = r[3] or 0.0
-        assets = r[4] or 0.0
-        liab = r[5] or 0.0
+        liquid = r[2] if r[2] is not None else 0.0
+        invest = r[3] if r[3] is not None else 0.0
+        assets = r[4] if r[4] is not None else 0.0
+        liab = r[5] if r[5] is not None else 0.0
         net_worth = (liquid + invest + assets) - liab
         results.append({
             "id": r[0],
@@ -119,34 +119,34 @@ def list_commitments(
 ) -> List[Dict[str, Any]]:
     """Lists recurring financial commitments with optional filtering."""
     init_db(db_path)
-    conn = get_db(db_path)
-    cursor = conn.cursor()
+    from contextlib import closing
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
 
-    query = """
-    SELECT c.id, c.name, c.category, c.amount, c.currency, c.frequency, 
-           c.payment_account_id, c.status, c.renewal_date, c.notes,
-           p.name as account_name
-    FROM recurring_commitments c
-    LEFT JOIN payment_accounts p ON p.id = c.payment_account_id
-    WHERE 1=1
-    """
-    params: List[Any] = []
+        query = """
+        SELECT c.id, c.name, c.category, c.amount, c.currency, c.frequency, 
+               c.payment_account_id, c.status, c.renewal_date, c.notes,
+               p.name as account_name
+        FROM recurring_commitments c
+        LEFT JOIN payment_accounts p ON p.id = c.payment_account_id
+        WHERE 1=1
+        """
+        params: List[Any] = []
 
-    if status:
-        query += " AND c.status = ?"
-        params.append(status)
-    if category:
-        query += " AND c.category = ?"
-        params.append(category.lower())
+        if status:
+            query += " AND c.status = ?"
+            params.append(status)
+        if category:
+            query += " AND c.category = ?"
+            params.append(category.lower())
 
-    query += " ORDER BY c.amount DESC"
-    rows = cursor.execute(query, params).fetchall()
-    conn.close()
+        query += " ORDER BY c.amount DESC"
+        rows = cursor.execute(query, params).fetchall()
 
     results = []
     for r in rows:
-        amount = r[3] or 0.0
-        freq = r[5] or "monthly"
+        amount = r[3] if r[3] is not None else 0.0
+        freq = r[5] if r[5] is not None else "monthly"
         # Calculate monthly normalized amount
         if freq == "yearly":
             monthly_norm = amount / 12.0

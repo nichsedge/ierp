@@ -53,15 +53,25 @@ def complete_maintenance(
     """
     init_db(db_path)
     now_str = completion_date or datetime.now().strftime("%Y-%m-%d")
-    item = get_maintenance(item_id, db_path)
-    if not item:
-        return {"success": False, "error": "Item not found"}
+    try:
+        base_dt = datetime.strptime(now_str[:10], "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return {"success": False, "error": f"Invalid date format: {now_str}. Expected YYYY-MM-DD"}
 
     next_id = None
     next_due = None
 
     with db_session(db_path) as cursor:
-        update_cost = cost if cost is not None else item["cost"]
+        row = cursor.execute("""
+        SELECT id, name, category, due_date, interval_days, cost, notes, gadget_id
+        FROM maintenance_items WHERE id = ?
+        """, (item_id,)).fetchone()
+        if not row:
+            return {"success": False, "error": "Item not found"}
+
+        _, name, category, _, interval, default_cost, notes, gadget_id = row
+        update_cost = cost if cost is not None else default_cost
+
         cursor.execute("""
         UPDATE maintenance_items
         SET status = 'completed', cost = ?, updated_at = datetime('now', 'localtime')
@@ -69,29 +79,23 @@ def complete_maintenance(
         """, (update_cost, item_id))
 
         # Auto-reschedule if recurring
-        interval = item["interval_days"]
         if interval and interval > 0:
-            try:
-                base_dt = datetime.strptime(now_str[:10], "%Y-%m-%d")
-                next_dt = base_dt + timedelta(days=interval)
-                next_due = next_dt.strftime("%Y-%m-%d")
-
-                cursor.execute("""
-                INSERT INTO maintenance_items (
-                    name, category, due_date, interval_days, cost, notes, gadget_id, status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
-                """, (
-                    item["name"],
-                    item["category"],
-                    next_due,
-                    interval,
-                    item["cost"],
-                    item["notes"],
-                    item["gadget_id"],
-                ))
-                next_id = cursor.lastrowid
-            except ValueError:
-                pass
+            next_dt = base_dt + timedelta(days=interval)
+            next_due = next_dt.strftime("%Y-%m-%d")
+            cursor.execute("""
+            INSERT INTO maintenance_items (
+                name, category, due_date, interval_days, cost, notes, gadget_id, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+            """, (
+                name,
+                category,
+                next_due,
+                interval,
+                default_cost,
+                notes,
+                gadget_id,
+            ))
+            next_id = cursor.lastrowid
 
     return {
         "success": True,
@@ -104,17 +108,17 @@ def complete_maintenance(
 def get_maintenance(item_id: int, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
     """Retrieves a single maintenance task by ID."""
     init_db(db_path)
-    conn = get_db(db_path)
-    cursor = conn.cursor()
-    row = cursor.execute("""
-    SELECT m.id, m.name, m.category, m.due_date, m.interval_days, m.status, 
-           m.cost, m.notes, m.gadget_id, m.created_at, m.updated_at,
-           g.name as gadget_name
-    FROM maintenance_items m
-    LEFT JOIN gadgets g ON g.id = m.gadget_id
-    WHERE m.id = ?
-    """, (item_id,)).fetchone()
-    conn.close()
+    from contextlib import closing
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
+        row = cursor.execute("""
+        SELECT m.id, m.name, m.category, m.due_date, m.interval_days, m.status, 
+               m.cost, m.notes, m.gadget_id, m.created_at, m.updated_at,
+               g.name as gadget_name
+        FROM maintenance_items m
+        LEFT JOIN gadgets g ON g.id = m.gadget_id
+        WHERE m.id = ?
+        """, (item_id,)).fetchone()
 
     if not row:
         return None
@@ -143,42 +147,48 @@ def list_maintenance(
     status: Optional[str] = "pending",
     category: Optional[str] = None,
     due_within_days: Optional[int] = None,
-    limit: int = 50,
+    limit: Optional[int] = 50,
     offset: int = 0,
     db_path: Optional[Path] = None,
 ) -> List[Dict[str, Any]]:
     """Lists maintenance tasks with optional filtering."""
     init_db(db_path)
-    conn = get_db(db_path)
-    cursor = conn.cursor()
+    from contextlib import closing
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
 
-    query = """
-    SELECT m.id, m.name, m.category, m.due_date, m.interval_days, m.status, 
-           m.cost, m.notes, m.gadget_id, m.created_at, m.updated_at,
-           g.name as gadget_name
-    FROM maintenance_items m
-    LEFT JOIN gadgets g ON g.id = m.gadget_id
-    WHERE 1=1
-    """
-    params: List[Any] = []
+        query = """
+        SELECT m.id, m.name, m.category, m.due_date, m.interval_days, m.status, 
+               m.cost, m.notes, m.gadget_id, m.created_at, m.updated_at,
+               g.name as gadget_name
+        FROM maintenance_items m
+        LEFT JOIN gadgets g ON g.id = m.gadget_id
+        WHERE 1=1
+        """
+        params: List[Any] = []
 
-    if status:
-        query += " AND m.status = ?"
-        params.append(status)
-    if category:
-        query += " AND m.category = ?"
-        params.append(category.lower())
-    if due_within_days is not None:
-        target_dt = datetime.now() + timedelta(days=due_within_days)
-        target_str = target_dt.strftime("%Y-%m-%d")
-        query += " AND m.due_date <= ?"
-        params.append(target_str)
+        if status:
+            query += " AND m.status = ?"
+            params.append(status)
+        if category:
+            query += " AND m.category = ?"
+            params.append(category.lower())
+        if due_within_days is not None:
+            target_dt = datetime.now() + timedelta(days=due_within_days)
+            target_str = target_dt.strftime("%Y-%m-%d")
+            query += " AND m.due_date <= ?"
+            params.append(target_str)
 
-    query += " ORDER BY m.due_date ASC, m.id ASC LIMIT ? OFFSET ?"
-    params.extend([limit, offset])
+        if limit is not None:
+            query += " ORDER BY m.due_date ASC, m.id ASC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+        else:
+            query += " ORDER BY m.due_date ASC, m.id ASC"
+            if offset > 0:
+                query += " LIMIT -1 OFFSET ?"
+                params.append(offset)
 
-    rows = cursor.execute(query, params).fetchall()
-    conn.close()
+        rows = cursor.execute(query, params).fetchall()
 
     today_str = datetime.now().strftime("%Y-%m-%d")
     results = []
@@ -212,8 +222,8 @@ def delete_maintenance(item_id: int, db_path: Optional[Path] = None) -> bool:
 
 
 def get_maintenance_summary(db_path: Optional[Path] = None) -> Dict[str, Any]:
-    """Returns overview of pending, overdue, and upcoming maintenance tasks."""
-    pending = list_maintenance(status="pending", limit=500, db_path=db_path)
+    """Returns overview of pending, overdue, and upcoming maintenance tasks without truncation."""
+    pending = list_maintenance(status="pending", limit=None, db_path=db_path)
     today_str = datetime.now().strftime("%Y-%m-%d")
 
     overdue = [item for item in pending if item["due_date"] < today_str]

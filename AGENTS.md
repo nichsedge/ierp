@@ -57,6 +57,10 @@ Code in `ierp/core/` is organized by bounded domain services:
 ## ⚡ SQLite WAL & FTS5 Full-Text Search Engine
 
 * **Local SQLite with WAL Mode**: All database connections MUST use WAL (`PRAGMA journal_mode = WAL;`) and busy timeouts (`PRAGMA busy_timeout = 5000;`) to guarantee non-blocking concurrent reads and writes between background tasks and the web dashboard.
+* **Connection Lifecycle & Resource Hygiene**: Always wrap `get_db()` with `with closing(get_db(db_path)) as conn:` for read queries, or use `with db_session(db_path) as cursor:` for atomic transactional mutations to eliminate connection leaks.
+* **SQL Injection Prevention on Dynamic Columns**: Whitelist all dynamic SQL sort columns against a strict `valid_sort_cols` set before formatting into `ORDER BY` clauses.
+* **Cadence & Tier SSOT**: Dunbar relationship tier cadences are centrally defined in `radar.DEFAULT_CADENCE_BY_TIER` (Tier 0: 0d Untracked, Tier 1: 14d, Tier 2: 60d, Tier 3: 180d) and reused across CRM and Radar domains.
+* **Atomic Life Operations**: Life ops and maintenance auto-rescheduling must execute within a single transaction (`db_session`), validating date formats upfront before any database mutation.
 * **FTS5 Full-Text Search Virtual Table**: The `events_fts` external content virtual table indexes timeline events and notes in real-time using automatic SQLite triggers (`events_ai`, `events_ad`, `events_au`) and provides BM25 relevance ranking (`bm25(events_fts)`).
 * **Pure Standard Library Garden Generation**: All markdown notes and YAML frontmatter exports to the Digital Garden must remain 100% standard library (no `pyyaml` or external frontmatter libraries).
 

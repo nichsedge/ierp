@@ -43,7 +43,7 @@ def update_contact_cadence(
 def compute_radar(
     tier: Optional[int] = None,
     overdue_only: bool = False,
-    limit: int = 50,
+    limit: Optional[int] = 50,
     offset: int = 0,
     db_path: Optional[Path] = None,
 ) -> List[Dict[str, Any]]:
@@ -53,32 +53,32 @@ def compute_radar(
     Excludes Tier 0 (untracked directory contacts) unless explicitly requested.
     """
     init_db(db_path)
-    conn = get_db(db_path)
-    cursor = conn.cursor()
+    from contextlib import closing
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
 
-    query = """
-    SELECT c.id, c.name, c.org, c.email, c.phone, c.tier, c.cadence_days,
-           MAX(e.start_date) as last_seen_date,
-           c.date as contact_date,
-           c.notes,
-           COUNT(e.id) as total_interactions
-    FROM contacts c
-    LEFT JOIN event_contacts ec ON ec.contact_id = c.id
-    LEFT JOIN events e ON e.id = ec.event_id
-    WHERE 1=1
-    """
-    params: List[Any] = []
+        query = """
+        SELECT c.id, c.name, c.org, c.email, c.phone, c.tier, c.cadence_days,
+               MAX(e.start_date) as last_seen_date,
+               c.date as contact_date,
+               c.notes,
+               COUNT(e.id) as total_interactions
+        FROM contacts c
+        LEFT JOIN event_contacts ec ON ec.contact_id = c.id
+        LEFT JOIN events e ON e.id = ec.event_id
+        WHERE 1=1
+        """
+        params: List[Any] = []
 
-    if tier is not None:
-        query += " AND c.tier = ?"
-        params.append(tier)
-    else:
-        query += " AND c.tier > 0"
+        if tier is not None:
+            query += " AND c.tier = ?"
+            params.append(tier)
+        else:
+            query += " AND c.tier > 0"
 
-    query += " GROUP BY c.id"
+        query += " GROUP BY c.id"
 
-    rows = cursor.execute(query, params).fetchall()
-    conn.close()
+        rows = cursor.execute(query, params).fetchall()
 
     now = datetime.now()
     results = []
@@ -128,7 +128,9 @@ def compute_radar(
 
     # Sort: Tier 1 first, then highest days_overdue, then highest days_since
     results.sort(key=lambda x: (x["tier"], -x["days_overdue"], -x["days_since_last_touch"]))
-    return results[offset : offset + limit]
+    if limit is not None:
+        return results[offset : offset + limit]
+    return results[offset:]
 
 
 def get_daily_reconnection(db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
@@ -140,16 +142,13 @@ def get_daily_reconnection(db_path: Optional[Path] = None) -> Optional[Dict[str,
     3. Tier 3 contacts overdue (sorted by most days overdue)
     Returns None if no contacts in Tiers 1-3 are overdue.
     """
-    for t in [1, 2, 3]:
-        overdue = compute_radar(tier=t, overdue_only=True, limit=1, db_path=db_path)
-        if overdue:
-            return overdue[0]
-    return None
+    overdue = compute_radar(overdue_only=True, limit=1, db_path=db_path)
+    return overdue[0] if overdue else None
 
 
 def get_radar_summary(db_path: Optional[Path] = None) -> Dict[str, Any]:
-    """Provides high-level health overview of network cadences."""
-    all_radar = compute_radar(overdue_only=False, limit=1000, db_path=db_path)
+    """Provides high-level health overview of network cadences without truncation."""
+    all_radar = compute_radar(overdue_only=False, limit=None, db_path=db_path)
     tier_counts = {1: 0, 2: 0, 3: 0}
     tier_overdue = {1: 0, 2: 0, 3: 0}
 

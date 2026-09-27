@@ -60,20 +60,73 @@ def review_decision(
         return cursor.rowcount > 0
 
 
+def update_decision(
+    decision_id: int,
+    title: Optional[str] = None,
+    choice: Optional[str] = None,
+    context: Optional[str] = None,
+    expected_outcome: Optional[str] = None,
+    confidence: Optional[int] = None,
+    review_date: Optional[str] = None,
+    project_id: Optional[int] = None,
+    status: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> bool:
+    """Updates fields of an existing decision record."""
+    init_db(db_path)
+    fields = []
+    values = []
+
+    if title is not None:
+        fields.append("title = ?")
+        values.append(title.strip())
+    if choice is not None:
+        fields.append("choice = ?")
+        values.append(choice.strip())
+    if context is not None:
+        fields.append("context = ?")
+        values.append(context.strip() if context else None)
+    if expected_outcome is not None:
+        fields.append("expected_outcome = ?")
+        values.append(expected_outcome.strip() if expected_outcome else None)
+    if confidence is not None:
+        fields.append("confidence = ?")
+        values.append(max(1, min(10, confidence)))
+    if review_date is not None:
+        fields.append("review_date = ?")
+        values.append(review_date.strip() if review_date else None)
+    if project_id is not None:
+        fields.append("project_id = ?")
+        values.append(project_id)
+    if status is not None:
+        fields.append("status = ?")
+        values.append(status.strip())
+
+    if not fields:
+        return False
+
+    fields.append("updated_at = datetime('now', 'localtime')")
+    values.append(decision_id)
+
+    with db_session(db_path) as cursor:
+        cursor.execute(f"UPDATE decisions SET {', '.join(fields)} WHERE id = ?", values)
+        return cursor.rowcount > 0
+
+
 def get_decision(decision_id: int, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
     """Retrieves a single decision record by ID."""
     init_db(db_path)
-    conn = get_db(db_path)
-    cursor = conn.cursor()
-    row = cursor.execute("""
-    SELECT d.id, d.title, d.context, d.choice, d.expected_outcome, d.confidence, 
-           d.review_date, d.actual_outcome, d.status, d.project_id, d.created_at, d.updated_at,
-           p.title as project_title, p.slug as project_slug
-    FROM decisions d
-    LEFT JOIN projects p ON p.id = d.project_id
-    WHERE d.id = ?
-    """, (decision_id,)).fetchone()
-    conn.close()
+    from contextlib import closing
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
+        row = cursor.execute("""
+        SELECT d.id, d.title, d.context, d.choice, d.expected_outcome, d.confidence, 
+               d.review_date, d.actual_outcome, d.status, d.project_id, d.created_at, d.updated_at,
+               p.title as project_title, p.slug as project_slug
+        FROM decisions d
+        LEFT JOIN projects p ON p.id = d.project_id
+        WHERE d.id = ?
+        """, (decision_id,)).fetchone()
 
     if not row:
         return None
@@ -106,33 +159,33 @@ def list_decisions(
 ) -> List[Dict[str, Any]]:
     """Lists decisions with optional filters."""
     init_db(db_path)
-    conn = get_db(db_path)
-    cursor = conn.cursor()
+    from contextlib import closing
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
 
-    query = """
-    SELECT d.id, d.title, d.context, d.choice, d.expected_outcome, d.confidence, 
-           d.review_date, d.actual_outcome, d.status, d.project_id, d.created_at, d.updated_at,
-           p.title as project_title, p.slug as project_slug
-    FROM decisions d
-    LEFT JOIN projects p ON p.id = d.project_id
-    WHERE 1=1
-    """
-    params: List[Any] = []
+        query = """
+        SELECT d.id, d.title, d.context, d.choice, d.expected_outcome, d.confidence, 
+               d.review_date, d.actual_outcome, d.status, d.project_id, d.created_at, d.updated_at,
+               p.title as project_title, p.slug as project_slug
+        FROM decisions d
+        LEFT JOIN projects p ON p.id = d.project_id
+        WHERE 1=1
+        """
+        params: List[Any] = []
 
-    if status:
-        query += " AND d.status = ?"
-        params.append(status)
-    if project_id is not None:
-        query += " AND d.project_id = ?"
-        params.append(project_id)
-    if pending_review_only:
-        query += " AND d.status = 'pending' AND d.review_date IS NOT NULL AND d.review_date <= date('now')"
+        if status:
+            query += " AND d.status = ?"
+            params.append(status)
+        if project_id is not None:
+            query += " AND d.project_id = ?"
+            params.append(project_id)
+        if pending_review_only:
+            query += " AND d.status = 'pending' AND d.review_date IS NOT NULL AND d.review_date <= date('now')"
 
-    query += " ORDER BY CASE WHEN d.status = 'pending' THEN 0 ELSE 1 END, d.review_date ASC, d.created_at DESC LIMIT ? OFFSET ?"
-    params.extend([limit, offset])
+        query += " ORDER BY CASE WHEN d.status = 'pending' THEN 0 ELSE 1 END, d.review_date ASC, d.created_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
 
-    rows = cursor.execute(query, params).fetchall()
-    conn.close()
+        rows = cursor.execute(query, params).fetchall()
 
     return [
         {
@@ -170,20 +223,20 @@ def get_decision_alerts(window_days: int = 7, db_path: Optional[Path] = None) ->
     - 'upcoming': review_date > date('now') and review_date <= date('now', f'+{window_days} days') and status == 'pending'
     """
     init_db(db_path)
-    conn = get_db(db_path)
-    cursor = conn.cursor()
+    from contextlib import closing
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
 
-    query = """
-    SELECT d.id, d.title, d.choice, d.expected_outcome, d.confidence, d.review_date, d.status,
-           p.title as project_title,
-           CAST(ROUND(julianday(d.review_date) - julianday(date('now'))) AS INTEGER) as days_until_review
-    FROM decisions d
-    LEFT JOIN projects p ON p.id = d.project_id
-    WHERE d.status = 'pending' AND d.review_date IS NOT NULL
-    ORDER BY d.review_date ASC
-    """
-    rows = cursor.execute(query).fetchall()
-    conn.close()
+        query = """
+        SELECT d.id, d.title, d.choice, d.expected_outcome, d.confidence, d.review_date, d.status,
+               p.title as project_title,
+               CAST(ROUND(julianday(d.review_date) - julianday(date('now'))) AS INTEGER) as days_until_review
+        FROM decisions d
+        LEFT JOIN projects p ON p.id = d.project_id
+        WHERE d.status = 'pending' AND d.review_date IS NOT NULL
+        ORDER BY d.review_date ASC
+        """
+        rows = cursor.execute(query).fetchall()
 
     overdue = []
     upcoming = []

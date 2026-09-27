@@ -178,13 +178,13 @@ def generate_life_audit(db_path: Optional[Path] = None) -> Dict[str, Any]:
         })
 
     # Count recent events without project_id
-    conn = get_db(db_path)
-    cur = conn.cursor()
-    unlinked_events = cur.execute("""
-    SELECT COUNT(*) FROM events 
-    WHERE project_id IS NULL AND start_date >= date('now', '-30 days')
-    """).fetchone()[0]
-    conn.close()
+    from contextlib import closing
+    with closing(get_db(db_path)) as conn:
+        cur = conn.cursor()
+        unlinked_events = cur.execute("""
+        SELECT COUNT(*) FROM events 
+        WHERE project_id IS NULL AND start_date >= date('now', '-30 days')
+        """).fetchone()[0]
 
     if unlinked_events > 5:
         findings.append({

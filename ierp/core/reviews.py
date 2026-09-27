@@ -54,26 +54,26 @@ def list_retrospectives(
 ) -> List[Dict[str, Any]]:
     """Lists retrospectives ordered by period start date descending."""
     init_db(db_path)
-    conn = get_db(db_path)
-    cursor = conn.cursor()
+    from contextlib import closing
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
 
-    query = """
-    SELECT id, period_start, period_end, period_type, wins, drains_burnout, 
-           lessons, focus_next, rating, notes, created_at, updated_at
-    FROM retrospectives
-    WHERE 1=1
-    """
-    params: List[Any] = []
+        query = """
+        SELECT id, period_start, period_end, period_type, wins, drains_burnout, 
+               lessons, focus_next, rating, notes, created_at, updated_at
+        FROM retrospectives
+        WHERE 1=1
+        """
+        params: List[Any] = []
 
-    if period_type:
-        query += " AND period_type = ?"
-        params.append(period_type.lower())
+        if period_type:
+            query += " AND period_type = ?"
+            params.append(period_type.lower())
 
-    query += " ORDER BY period_start DESC, id DESC LIMIT ? OFFSET ?"
-    params.extend([limit, offset])
+        query += " ORDER BY period_start DESC, id DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
 
-    rows = cursor.execute(query, params).fetchall()
-    conn.close()
+        rows = cursor.execute(query, params).fetchall()
 
     return [
         {
@@ -97,14 +97,14 @@ def list_retrospectives(
 def get_retrospective(retro_id: int, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
     """Retrieves a single retrospective by ID."""
     init_db(db_path)
-    conn = get_db(db_path)
-    cursor = conn.cursor()
-    row = cursor.execute("""
-    SELECT id, period_start, period_end, period_type, wins, drains_burnout, 
-           lessons, focus_next, rating, notes, created_at, updated_at
-    FROM retrospectives WHERE id = ?
-    """, (retro_id,)).fetchone()
-    conn.close()
+    from contextlib import closing
+    with closing(get_db(db_path)) as conn:
+        cursor = conn.cursor()
+        row = cursor.execute("""
+        SELECT id, period_start, period_end, period_type, wins, drains_burnout, 
+               lessons, focus_next, rating, notes, created_at, updated_at
+        FROM retrospectives WHERE id = ?
+        """, (retro_id,)).fetchone()
 
     if not row:
         return None
@@ -123,6 +123,63 @@ def get_retrospective(retro_id: int, db_path: Optional[Path] = None) -> Optional
         "created_at": row[10],
         "updated_at": row[11],
     }
+
+
+def update_retrospective(
+    retro_id: int,
+    period_start: Optional[str] = None,
+    period_end: Optional[str] = None,
+    period_type: Optional[str] = None,
+    wins: Optional[str] = None,
+    drains_burnout: Optional[str] = None,
+    lessons: Optional[str] = None,
+    focus_next: Optional[str] = None,
+    rating: Optional[int] = None,
+    notes: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> bool:
+    """Updates fields of an existing retrospective record."""
+    init_db(db_path)
+    fields = []
+    values = []
+
+    if period_start is not None:
+        fields.append("period_start = ?")
+        values.append(period_start.strip())
+    if period_end is not None:
+        fields.append("period_end = ?")
+        values.append(period_end.strip())
+    if period_type is not None:
+        fields.append("period_type = ?")
+        values.append(period_type.strip().lower())
+    if wins is not None:
+        fields.append("wins = ?")
+        values.append(wins.strip() if wins else None)
+    if drains_burnout is not None:
+        fields.append("drains_burnout = ?")
+        values.append(drains_burnout.strip() if drains_burnout else None)
+    if lessons is not None:
+        fields.append("lessons = ?")
+        values.append(lessons.strip() if lessons else None)
+    if focus_next is not None:
+        fields.append("focus_next = ?")
+        values.append(focus_next.strip() if focus_next else None)
+    if rating is not None:
+        fields.append("rating = ?")
+        values.append(max(1, min(10, rating)))
+    if notes is not None:
+        fields.append("notes = ?")
+        values.append(notes)
+
+    if not fields:
+        return False
+
+    fields.append("updated_at = datetime('now', 'localtime')")
+    values.append(retro_id)
+
+    with db_session(db_path) as cursor:
+        cursor.execute(f"UPDATE retrospectives SET {', '.join(fields)} WHERE id = ?", values)
+        return cursor.rowcount > 0
 
 
 def delete_retrospective(retro_id: int, db_path: Optional[Path] = None) -> bool:

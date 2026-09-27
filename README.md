@@ -116,8 +116,8 @@ uv run ierp dashboard
 | `uv run ierp garden-export` | Export iERP projects, decisions, reviews, and gadgets to Digital Garden markdown notes. |
 | `uv run ierp contacts [--source ...]` | List CRM contacts with filtering (`--tier`). |
 | `uv run ierp show-contact <ID>` | Show contact details, Dunbar tier, and linked events. |
-| `uv run ierp insert-contact --name ...` | Insert a contact record directly (`--org`, `--client`, `--location`, `--tier`). |
-| `uv run ierp update-contact <ID> ...` | Update an existing contact record (`--org`, `--client`, `--location`, `--notes`, `--tier`). |
+| `uv run ierp insert-contact --name ...` | Insert a contact record directly (`--org`, `--client`, `--location`, `--tier [0-3]`). |
+| `uv run ierp update-contact <ID> ...` | Update an existing contact record (`--org`, `--client`, `--location`, `--notes`, `--tier [0-3]`). |
 | `uv run ierp sync-contacts` | Sync contacts from Google People API ($0 cost). |
 | `uv run ierp merge-contacts --auto` | Auto-detect and merge matching duplicate contacts. |
 | `uv run ierp vendors [--favorite]` | List vendors and preferred service providers. |

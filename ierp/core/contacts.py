@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .db import get_db, init_db
+from .radar import DEFAULT_CADENCE_BY_TIER
 
 
 def resolve_contact(cursor_or_conn: sqlite3.Cursor | sqlite3.Connection, ref: str | int) -> tuple[int | None, str | None]:
@@ -54,7 +55,7 @@ def insert_contact(
     """Inserts a structured contact record directly into SQLite. Returns contacts.id."""
     init_db(db_path)
     clean_tier = max(0, min(3, tier))
-    days = cadence_days if cadence_days and cadence_days > 0 else (14 if clean_tier == 1 else (60 if clean_tier == 2 else (180 if clean_tier == 3 else 0)))
+    days = cadence_days if cadence_days and cadence_days > 0 else DEFAULT_CADENCE_BY_TIER.get(clean_tier, 0)
 
     with closing(get_db(db_path)) as conn:
         cursor = conn.cursor()
@@ -103,6 +104,9 @@ def list_contacts(
 
     where_sql = " AND ".join(where_clauses)
     direction = "DESC" if str(sort_dir).upper() == "DESC" else "ASC"
+    valid_sort_cols = {"c.id", "c.name", "c.org", "c.email", "c.tier", "c.cadence_days", "c.created_at", "c.source"}
+    if sort_col not in valid_sort_cols:
+        sort_col = "c.name"
 
     with closing(get_db(db_path)) as conn:
         cursor = conn.cursor()
@@ -132,8 +136,8 @@ def list_contacts(
             "is_google_linked": bool(r[9]),
             "google_id": r[9],
             "created_at": r[10],
-            "tier": r[11] or 3,
-            "cadence_days": r[12] or 180,
+            "tier": r[11] if r[11] is not None else 3,
+            "cadence_days": r[12] if r[12] is not None else 180,
             "event_count": r[13],
         } for r in rows]
 
@@ -180,8 +184,8 @@ def get_contact(contact_id: int, db_path: Path | None = None) -> dict[str, Any] 
             "source": source or ("google" if google_id else "manual"),
             "is_google_linked": bool(google_id),
             "created_at": created_at,
-            "tier": tier_val or 3,
-            "cadence_days": cadence_val or 180,
+            "tier": tier_val if tier_val is not None else 3,
+            "cadence_days": cadence_val if cadence_val is not None else 180,
             "events": [{"id": eid, "title": etitle, "start_date": estart} for eid, etitle, estart in event_rows],
         }
 
@@ -232,12 +236,12 @@ def update_contact(
             updates.append("notes = ?")
             params.append(notes)
         if tier is not None:
-            clean_tier = max(1, min(3, tier))
+            clean_tier = max(0, min(3, tier))
             updates.append("tier = ?")
             params.append(clean_tier)
             if cadence_days is None:
                 updates.append("cadence_days = ?")
-                params.append(14 if clean_tier == 1 else (60 if clean_tier == 2 else 180))
+                params.append(DEFAULT_CADENCE_BY_TIER.get(clean_tier, 0))
         if cadence_days is not None:
             updates.append("cadence_days = ?")
             params.append(cadence_days)

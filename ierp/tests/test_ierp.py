@@ -3,6 +3,7 @@ Automated unit and integration test suite for iERP.
 Runs with standard library unittest (zero external dependencies).
 """
 
+from contextlib import closing
 import json
 import sqlite3
 import tempfile
@@ -1204,25 +1205,31 @@ class TestIERP(unittest.TestCase):
 
     def test_decision_retrospective_alerts(self):
         """Verifies get_decision_alerts detects overdue and upcoming decisions."""
+        from datetime import timedelta
+        today = datetime.now().date()
+        overdue_date = (today - timedelta(days=30)).isoformat()
+        upcoming_date = (today + timedelta(days=5)).isoformat()
+        far_date = (today + timedelta(days=120)).isoformat()
+
         d_overdue = insert_decision(
             title="Overdue Choice",
             choice="A",
             confidence=8,
-            review_date="2026-09-01",
+            review_date=overdue_date,
             db_path=self.db_path,
         )
         d_upcoming = insert_decision(
             title="Upcoming Choice",
             choice="B",
             confidence=9,
-            review_date="2026-09-25",
+            review_date=upcoming_date,
             db_path=self.db_path,
         )
         d_far = insert_decision(
             title="Far Future Choice",
             choice="C",
             confidence=7,
-            review_date="2027-01-01",
+            review_date=far_date,
             db_path=self.db_path,
         )
 
@@ -1272,8 +1279,7 @@ class TestIERP(unittest.TestCase):
 
         upsert_repositories(self.db_path, [sample_repo])
 
-        conn = get_db(self.db_path)
-        try:
+        with closing(get_db(self.db_path)) as conn:
             exported = export_repos(conn)
             self.assertEqual(len(exported), 1)
             repo = exported[0]
@@ -1282,8 +1288,187 @@ class TestIERP(unittest.TestCase):
             self.assertEqual(repo["topics"], ["test", "python"])
             self.assertFalse(repo["private"])
             self.assertEqual(repo["stargazers_count"], 5)
-        finally:
-            conn.close()
+
+    def test_commerce_get_and_delete(self):
+        """Verifies get and delete operations for payment accounts and referrals."""
+        from ierp.core.commerce import (
+            insert_payment_account,
+            get_payment_account,
+            delete_payment_account,
+            upsert_referral,
+            get_referral,
+            delete_referral,
+        )
+
+        pid = insert_payment_account(
+            slug="mandiri-ops",
+            name="Bank Mandiri",
+            category="Bank Transfer",
+            number="137000123456",
+            recipient="Ichsanul",
+            db_path=self.db_path,
+        )
+        self.assertGreater(pid, 0)
+
+        # Get by ID and slug
+        acc_by_id = get_payment_account(pid, db_path=self.db_path)
+        self.assertIsNotNone(acc_by_id)
+        self.assertEqual(acc_by_id["name"], "Bank Mandiri")
+
+        acc_by_slug = get_payment_account("mandiri-ops", db_path=self.db_path)
+        self.assertIsNotNone(acc_by_slug)
+        self.assertEqual(acc_by_slug["id"], pid)
+
+        # Delete payment account
+        self.assertTrue(delete_payment_account(pid, db_path=self.db_path))
+        self.assertIsNone(get_payment_account(pid, db_path=self.db_path))
+        self.assertFalse(delete_payment_account(99999, db_path=self.db_path))
+
+        # Referrals
+        with closing(get_db(self.db_path)) as conn:
+            rid = upsert_referral(
+                conn.cursor(),
+                slug="github-copilot",
+                name="GitHub Copilot",
+                category="AI",
+                code="COPILOT20",
+                link="https://github.com",
+            )
+            conn.commit()
+
+        ref_by_id = get_referral(rid, db_path=self.db_path)
+        self.assertIsNotNone(ref_by_id)
+        self.assertEqual(ref_by_id["code"], "COPILOT20")
+
+        ref_by_slug = get_referral("github-copilot", db_path=self.db_path)
+        self.assertIsNotNone(ref_by_slug)
+        self.assertEqual(ref_by_slug["id"], rid)
+
+        # Delete referral
+        self.assertTrue(delete_referral(rid, db_path=self.db_path))
+        self.assertIsNone(get_referral(rid, db_path=self.db_path))
+        self.assertFalse(delete_referral(99999, db_path=self.db_path))
+
+    def test_vendor_update_crud(self):
+        """Verifies update_vendor edits fields and toggles favorite properly."""
+        from ierp.core.vendors import insert_vendor, get_vendor, update_vendor
+
+        vid = insert_vendor(
+            name="Old Cafe",
+            category="Cafe",
+            location="Semarang",
+            phone="08111111",
+            db_path=self.db_path,
+        )
+        self.assertGreater(vid, 0)
+
+        updated = update_vendor(
+            vid,
+            name="New Cafe",
+            category="Coworking",
+            phone="08222222",
+            favorite=True,
+            notes="Has high-speed fiber",
+            db_path=self.db_path,
+        )
+        self.assertTrue(updated)
+
+        v = get_vendor(vid, db_path=self.db_path)
+        self.assertEqual(v["name"], "New Cafe")
+        self.assertEqual(v["category"], "Coworking")
+        self.assertEqual(v["phone"], "08222222")
+        self.assertTrue(v["favorite"])
+        self.assertEqual(v["notes"], "Has high-speed fiber")
+
+        # Non-existent vendor
+        self.assertFalse(update_vendor(99999, name="Ghost", db_path=self.db_path))
+
+    def test_decision_update_crud(self):
+        """Verifies update_decision allows modifying parameters before retrospective review."""
+        from ierp.core.decisions import insert_decision, get_decision, update_decision
+
+        did = insert_decision(
+            title="Initial Hypothesis",
+            choice="Framework X",
+            confidence=6,
+            review_date="2026-10-01",
+            db_path=self.db_path,
+        )
+        self.assertGreater(did, 0)
+
+        updated = update_decision(
+            did,
+            title="Refined Hypothesis",
+            choice="Standard Library",
+            confidence=9,
+            expected_outcome="Faster startup and zero dependency debt",
+            review_date="2026-11-01",
+            db_path=self.db_path,
+        )
+        self.assertTrue(updated)
+
+        d = get_decision(did, db_path=self.db_path)
+        self.assertEqual(d["title"], "Refined Hypothesis")
+        self.assertEqual(d["choice"], "Standard Library")
+        self.assertEqual(d["confidence"], 9)
+        self.assertEqual(d["expected_outcome"], "Faster startup and zero dependency debt")
+        self.assertEqual(d["review_date"], "2026-11-01")
+
+    def test_retrospective_update_crud(self):
+        """Verifies update_retrospective allows editing reflection logs."""
+        from ierp.core.reviews import insert_retrospective, get_retrospective, update_retrospective
+
+        rid = insert_retrospective(
+            period_start="2026-09-01",
+            period_end="2026-09-07",
+            period_type="weekly",
+            wins="Initial draft",
+            rating=6,
+            db_path=self.db_path,
+        )
+        self.assertGreater(rid, 0)
+
+        updated = update_retrospective(
+            rid,
+            wins="Polished architecture and added zero-dependency tools",
+            rating=10,
+            focus_next="Expand test coverage",
+            db_path=self.db_path,
+        )
+        self.assertTrue(updated)
+
+        r = get_retrospective(rid, db_path=self.db_path)
+        self.assertEqual(r["wins"], "Polished architecture and added zero-dependency tools")
+        self.assertEqual(r["rating"], 10)
+        self.assertEqual(r["focus_next"], "Expand test coverage")
+
+    def test_maintenance_validation_and_cadence_reset(self):
+        """Verifies complete_maintenance validates invalid dates and contacts cadence resets cleanly."""
+        from ierp.core.lifeops import insert_maintenance, complete_maintenance
+        from ierp.core.contacts import insert_contact, update_contact, get_contact
+
+        mid = insert_maintenance(
+            name="Passport Renewal",
+            due_date="2026-12-01",
+            interval_days=365,
+            db_path=self.db_path,
+        )
+        # Invalid date format should fail gracefully with error message
+        res_invalid = complete_maintenance(mid, completion_date="not-a-date", db_path=self.db_path)
+        self.assertFalse(res_invalid["success"])
+        self.assertIn("error", res_invalid)
+
+        # Contact cadence update to tier 0 resets cadence to 0
+        cid = insert_contact(name="Acquaintance", tier=2, db_path=self.db_path)
+        c_before = get_contact(cid, db_path=self.db_path)
+        self.assertEqual(c_before["tier"], 2)
+        self.assertEqual(c_before["cadence_days"], 60)
+
+        # Downgrade to Tier 0 untracked
+        update_contact(cid, tier=0, db_path=self.db_path)
+        c_after = get_contact(cid, db_path=self.db_path)
+        self.assertEqual(c_after["tier"], 0)
+        self.assertEqual(c_after["cadence_days"], 0)
 
 
 def run_tests():
