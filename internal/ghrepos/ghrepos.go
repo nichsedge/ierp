@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 )
 
 const graphQLQuery = `query($after:String){
@@ -349,6 +350,9 @@ func ExportGitHubRepos(ctx context.Context, db *sql.DB, outputPath string) (int,
 		r.Topics = []string{}
 		if topicsVal.Valid && topicsVal.String != "" {
 			_ = json.Unmarshal([]byte(topicsVal.String), &r.Topics)
+			if r.Topics == nil {
+				r.Topics = []string{}
+			}
 		}
 
 		records = append(records, r)
@@ -358,7 +362,21 @@ func ExportGitHubRepos(ctx context.Context, db *sql.DB, outputPath string) (int,
 		return 0, err
 	}
 
-	payload, err := json.MarshalIndent(records, "", "  ")
+	payloadObj := struct {
+		GeneratedAtUTC string         `json:"generated_at_utc"`
+		Source         string         `json:"source"`
+		Affiliations   []string       `json:"affiliations"`
+		Count          int            `json:"count"`
+		Repos          []ExportedRepo `json:"repos"`
+	}{
+		GeneratedAtUTC: time.Now().UTC().Format(time.RFC3339),
+		Source:         "ierp (events.db)",
+		Affiliations:   []string{"OWNER", "COLLABORATOR", "ORGANIZATION_MEMBER"},
+		Count:          len(records),
+		Repos:          records,
+	}
+
+	payload, err := json.MarshalIndent(payloadObj, "", "  ")
 	if err != nil {
 		return 0, err
 	}
