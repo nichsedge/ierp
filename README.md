@@ -2,14 +2,14 @@
 
 > **iERP** — Manage your life, journal, contacts, runway, and timeline like an enterprise of one.
 
-A zero-dependency, offline-first personal operating system, CRM, journal event log system, and life navigation engine with Google Contacts sync, Google Maps Timeline imports, live GPS webhook ingestion, strategic initiatives, decision journaling, sovereign runway calculations, relationship radar, and preventive life ops.
+A zero-CGO, offline-first personal operating system, CRM, journal event log system, and life navigation engine written in modern Go (`github.com/nichsedge/ierp`) with embedded web dashboard, strategic initiatives, decision journaling, sovereign runway calculations, relationship radar, and preventive life ops.
 
 ---
 
 ## ⚡ Key Features
 
-* **Zero External Dependencies**: Pure Python 3.11+ standard library only. Instant startup, zero supply-chain bloat.
-* **Local SQLite with WAL Mode**: Safe concurrent reads/writes between CLI background syncs and web servers.
+* **Zero-CGO Pure Go**: Built with Go 1.24+ standard library and pure Go SQLite (`modernc.org/sqlite`). Instant startup, portable single binary, zero external runtime dependencies.
+* **Local SQLite with WAL Mode**: Safe concurrent reads/writes between CLI background syncs and web servers with foreign keys and 5000ms busy timeout.
 * **Sovereignty Runway & Treasury**:
   * Track net worth balance snapshots (liquid cash, investments, hard assets, liabilities).
   * Monitor fixed recurring burn commitments across housing, cloud, SaaS, and lifestyle.
@@ -30,54 +30,69 @@ A zero-dependency, offline-first personal operating system, CRM, journal event l
   * BM25 relevance scoring (`bm25(events_fts)`) and highlighted contextual snippet extraction.
 * **Deep Digital Garden Sync**:
   * Bidirectional knowledge synthesis generating Obsidian-compatible Markdown notes for **Strategic Projects**, **Decision Journal (PDRs)**, **Sprint Retrospectives**, and **Gadgets**.
-  * Auto-generated catalog indexes with Markdown tables and wikilinks (`[[Note Name]]`).
-* **$0 Cloud Sync**:
-  * **Google Contacts**: Incremental, tokenized sync using Google People API without monthly API costs.
-  * **Google Maps Timeline**: Import raw location history JSON with reverse geocoding cache.
-  * **Sans Finance SSOT Cashflow Engine**: Read-only monthly cashflow integration aggregating real-world income and expenses directly from the Sans Finance SQLite snapshot.
-* **Web Dashboard**: Responsive dark-mode dashboard built on a lightweight, zero-build declarative architecture (Petite-Vue, ~16.9 KB vendored). Tailscale & mobile-optimized with standalone PWA support, swipable tab navigation, bottom-sheet modal drawers, interactive 365-day activity heatmaps, Sans Finance SSOT cashflow breakdowns, event filtering, project initiatives, decision journal, relationship radar, and sovereignty runway.
+* **Embedded Web Dashboard**: Single-binary dashboard with embedded Petite-Vue templates and assets (`embed.FS`). Tailscale & mobile-optimized with standalone PWA support, interactive 365-day activity heatmaps, event filtering, project initiatives, decision journal, relationship radar, and sovereignty runway.
 
 ---
 
 ## 🚀 Quickstart
 
-### Installation
-Clone the repository and run using [uv](https://docs.astral.sh/uv/):
+### Installation & Build
+
 ```bash
+# Clone repository
 git clone https://github.com/nichsedge/ierp.git
 cd ierp
-uv sync
+
+# Build standalone binary
+go build -o bin/ierp ./cmd/ierp
+
+# Install to local path
+cp bin/ierp ~/.local/bin/ierp
 ```
 
 ### CLI Usage
+
 ```bash
-# Initialize database schema and indexes
-uv run ierp init
+# Initialize database schema, columns, and FTS5 triggers
+ierp init-db
 
 # View sovereign treasury runway
-uv run ierp runway
+ierp runway
 
 # Check relationship radar for overdue contacts
-uv run ierp radar --overdue-only
+ierp radar --overdue-only
+
+# Pick single highest-priority reconnection today
+ierp daily-reconnection
 
 # Log a strategic project / initiative
-uv run ierp insert-project --title "Digital Sovereignty Infra" --priority high
+ierp insert-project --title "Digital Sovereignty Infra" --priority high
 
 # Log a structured event linked to the project
-uv run ierp insert --title "Deploy SQLite WAL" --place "Jakarta" --start-date "2026-08-19" --project-id 1
+ierp insert --title "Deploy SQLite WAL" --place "Jakarta" --start "2026-10-04" --project-id 1
+
+# Search events with FTS5 BM25 ranking
+ierp search "Dinner"
 
 # Record a choice in the Decision Journal
-uv run ierp insert-decision --title "Accept Retainer Contract" --choice "Accept" --confidence 8 --review-date "2026-12-01"
+ierp insert-decision --title "Accept Retainer Contract" --choice "Accept" --confidence 8 --review-date "2026-12-01"
 
 # Record a net worth snapshot and monthly recurring commitment
-uv run ierp insert-snapshot --liquid 100000000 --investments 250000000 --assets 40000000
-uv run ierp insert-commitment --name "Apartment Rent" --amount 6000000 --frequency monthly --category housing
+ierp insert-snapshot --liquid 100000000 --investments 250000000 --assets 40000000
+ierp insert-commitment --name "Apartment Rent" --amount 6000000 --frequency monthly --category housing
 
 # Schedule a life ops maintenance task
-uv run ierp insert-maintenance --name "Motorbike Servicing" --due-date "2026-10-01" --interval 90 --category vehicle
+ierp insert-maintenance --name "Motorbike Servicing" --due-date "2026-11-01" --interval 90 --category vehicle
 
-# Launch Web Dashboard
-uv run ierp dashboard
+# Run life audit engine
+ierp audit
+
+# Export to Digital Graveyard and Portfolio Commerce
+ierp export-garden
+ierp export-commerce
+
+# Launch Embedded Web Dashboard (zero build pipeline, embedded Petite-Vue)
+ierp dashboard --port 8921
 ```
 
 ---
@@ -86,79 +101,38 @@ uv run ierp dashboard
 
 | Command | Description |
 | :--- | :--- |
-| `uv run ierp init` | Initialize the SQLite database schema, columns, and indexes. |
-| `uv run ierp runway` | Display sovereign runway in months, net worth, and monthly burn rate. |
-| `uv run ierp insert-snapshot` | Record a net worth balance snapshot (`--liquid`, `--investments`, `--assets`, `--liabilities`). |
-| `uv run ierp snapshots` | List historical net worth balance snapshots. |
-| `uv run ierp insert-commitment` | Record a recurring burn commitment (`--name`, `--amount`, `--frequency`, `--category`). |
-| `uv run ierp commitments` | List recurring financial commitments and monthly normalized burn. |
-| `uv run ierp insert-project` | Create a strategic initiative (`--title`, `--slug`, `--status`, `--priority`, `--target-date`). |
-| `uv run ierp projects` | List projects with linked event and decision counts. |
-| `uv run ierp show-project <ID\|slug>` | Show full project details with linked events and decisions. |
-| `uv run ierp insert-decision` | Record a choice in the decision journal (`--title`, `--choice`, `--confidence`, `--review-date`). |
-| `uv run ierp decisions` | List logged decisions with review status filters (`--pending-review`, `--window <days>`). |
-| `uv run ierp show-decision <ID>` | Show full decision context, choice, hypotheses, and post-review outcome. |
-| `uv run ierp review-decision <ID>` | Conduct a retrospective review on a decision (`--outcome` optional; prompts interactively). |
-| `uv run ierp radar` | Display relationship reconnection radar (`--overdue-only`, `--daily` for 1-contact focus). |
-| `uv run ierp set-tier` | Set Dunbar tier (0: Untracked, 1: Inner, 2: Core, 3: Broad) and touch cadence for a contact. |
-| `uv run ierp insert-maintenance` | Schedule a maintenance task or document expiration (`--name`, `--due-date`, `--interval`). |
-| `uv run ierp maintenance` | List maintenance tasks with overdue highlighting (`--due-within <days>`). |
-| `uv run ierp complete-maintenance <ID>` | Mark maintenance task complete (auto-schedules next occurrence if interval set). |
-| `uv run ierp insert-review` | Log a sprint retrospective (`--start`, `--end`, `--type`, `--wins`, `--drains`, `--lessons`, `--focus`). |
-| `uv run ierp reviews` | List sprint retrospectives. |
-| `uv run ierp show-review <ID>` | Show full sprint retrospective review details. |
-| `uv run ierp audit` | Scan entire ERP for missing data, overdue items, and actionable next steps (`--json`). |
-| `uv run ierp insert --title "<Title>" ...` | Insert a structured journal event directly (`--project-id`, `--contact`). |
-| `uv run ierp update-event <ID> ...` | Update an existing event record (`--title`, `--place`, `--notes`, `--contact`). |
-| `uv run ierp list [--limit N]` | List recent events. |
-| `uv run ierp show <ID>` | Show full event details and linked contacts. |
-| `uv run ierp search "<query>"` | Fast SQLite FTS5 full-text search with BM25 relevance ranking and note snippets. |
-| `uv run ierp garden-export` | Export iERP projects, decisions, reviews, and gadgets to Digital Garden markdown notes. |
-| `uv run ierp contacts [--source ...]` | List CRM contacts with filtering (`--tier`). |
-| `uv run ierp show-contact <ID>` | Show contact details, Dunbar tier, and linked events. |
-| `uv run ierp insert-contact --name ...` | Insert a contact record directly (`--org`, `--client`, `--location`, `--tier [0-3]`). |
-| `uv run ierp update-contact <ID> ...` | Update an existing contact record (`--org`, `--client`, `--location`, `--notes`, `--tier [0-3]`). |
-| `uv run ierp sync-contacts` | Sync contacts from Google People API ($0 cost). |
-| `uv run ierp merge-contacts --auto` | Auto-detect and merge matching duplicate contacts. |
-| `uv run ierp vendors [--favorite]` | List vendors and preferred service providers. |
-| `uv run ierp gadgets` | List hardware assets/gadgets with specs and linkages. |
-| `uv run ierp cashflow` | Display monthly income and expense cashflow from Sans Finance SSOT. |
-| `uv run ierp pay` | List payment accounts and banking nodes. |
-| `uv run ierp referrals` | List referral codes and affiliate links. |
-| `uv run ierp dashboard [--port 8000]` | Start web dashboard server with live GPS webhook receiver. |
-| `uv run ierp r2 [action]` | Multi-device sync with Cloudflare R2 (`status`, `push`, `pull`, `auto`). |
-| `uv run ierp test` | Run automated unit and integration test suite. |
-
+| `ierp init-db` | Initialize SQLite schema, indexes, and FTS5 triggers. |
+| `ierp runway` | Display sovereign runway in months, net worth, and monthly burn rate. |
+| `ierp insert-snapshot` | Record a net worth balance snapshot (`--liquid`, `--investments`, `--assets`, `--liabilities`). |
+| `ierp snapshots` | List historical net worth balance snapshots. |
+| `ierp insert-commitment` | Record a recurring burn commitment (`--name`, `--amount`, `--frequency`, `--category`). |
+| `ierp commitments` | List recurring financial commitments and monthly normalized burn. |
+| `ierp insert-project` | Create a strategic initiative (`--title`, `--slug`, `--priority`, `--target`). |
+| `ierp projects` | List projects. |
+| `ierp insert-decision` | Record a choice in the decision journal (`--title`, `--choice`, `--confidence`, `--review-date`). |
+| `ierp decisions` | List logged decisions with review status. |
+| `ierp review-decision <ID>` | Conduct a retrospective review on a decision (`--outcome`). |
+| `ierp radar` | Display relationship reconnection radar (`--overdue-only`, `--tier`). |
+| `ierp daily-reconnection` | Show top-priority relationship needing reachout today. |
+| `ierp set-tier` | Set Dunbar tier (0-3) and touch cadence for a contact (`--contact-id`, `--tier`, `--cadence`). |
+| `ierp insert-maintenance` | Schedule a maintenance task or document expiration (`--name`, `--due-date`, `--interval`). |
+| `ierp maintenance` | List maintenance tasks with overdue highlighting (`--overdue-only`). |
+| `ierp complete-maintenance <ID>` | Mark task complete (auto-reschedules if interval configured). |
+| `ierp insert-review` | Log a sprint retrospective (`--start`, `--end`, `--type`, `--wins`, `--drains`, `--lessons`, `--focus`). |
+| `ierp reviews` | List sprint retrospectives. |
+| `ierp audit` | Scan entire ERP for missing data, overdue items, and actionable next steps. |
+| `ierp insert` | Insert a structured journal event (`--title`, `--place`, `--start`, `--tags`, `--contacts`). |
+| `ierp list` | List recent events with filters (`--limit`, `--tag`, `--q`). |
+| `ierp search "<query>"` | Fast SQLite FTS5 full-text search with BM25 relevance ranking and note snippets. |
+| `ierp export-garden` | Export projects, decisions, reviews, and gadgets to Digital Garden markdown notes. |
+| `ierp export-commerce` | Export payment accounts and referral links to `pay.json` and `referrals.json`. |
+| `ierp dashboard` | Launch zero-dependency embedded web dashboard server (`--port`, `--host`). |
 
 ---
 
 ## 🧪 Testing
 
-Run the automated test suite:
 ```bash
-uv run ierp test
-# or
-uv run pytest
+# Run all Go package unit and integration tests
+go test -v ./...
 ```
-
----
-
-## 🔒 Privacy & Local-First
-
-All SQLite database records (`events.db`), media assets (`events_media/`), geocoding caches, and Google OAuth tokens remain strictly on your local machine and are ignored by git.
-
----
-
-## 💾 Backups & Disaster Recovery
-
-iERP includes automated atomic SQLite online backups and zero-dependency Cloudflare R2 cloud synchronization:
-
-```bash
-# Perform an immediate atomic backup to local and Cloudflare R2:
-python3 scripts/backup_r2.py
-```
-
-- **Local backups**: Overwrites a single rolling backup in `~/Projects/ierp/backups/events_backup_latest.sqlite` (with `events_backup_previous.sqlite` rotation).
-- **Cloudflare R2**: Overwrites `db/ierp_latest.sqlite` via AWS SigV4 signed requests in your private bucket (`ichsanul-dev`). Zero historical append, zero storage creep, 100% free tier safe forever.
-- **Automation**: Executed automatically during the daily ecosystem sync pipeline (`~/Projects/_scheduled_jobs/sync_ecosystem.py`).
-
