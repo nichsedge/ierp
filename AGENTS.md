@@ -18,12 +18,13 @@
 
 iERP is the **Central Single Source of Truth (SSOT) for Structured Personal ERP Data** across the entire workstation ([`~/Projects/DATA_ARCHITECTURE.md`](file:///home/al/Projects/DATA_ARCHITECTURE.md)):
 
-* **Downstream Export Pipelines**:
-  * **Digital Graveyard Deep Export**: `ierp export-garden` regenerates hardware notes (`content/Knowledge/Entities/Gadget/`), strategic initiatives (`content/Knowledge/Projects/`), decision journals (`content/Knowledge/Decisions/`), and retrospectives (`content/Write/Retrospectives/`) in `~/Projects/digital-graveyard`.
-  * **Commerce Export**: `ierp export-commerce` regenerates `pay.json` (payment accounts) and `referrals.json` (affiliate codes) in `~/Projects/nichsedge.github.io/data/`.
-  * **Cloudflare R2 Backup**: `scripts/backup_r2.py` performs atomic SQLite backup and uploads `db/ierp_latest.sqlite` and timestamped snapshots to Cloudflare R2 (`ichsanul-dev`).
+* **Downstream Export & Sync Pipelines**:
+  * **Digital Graveyard Deep Export**: `ierp export-garden` (or `ierp export garden`) regenerates hardware notes, strategic initiatives, decision journals, and retrospectives in `~/Projects/digital-graveyard`.
+  * **Commerce Export**: `ierp export-commerce` (or `ierp export commerce`) regenerates `pay.json` and `referrals.json` in `~/Projects/nichsedge.github.io/data/`.
+  * **GitHub Projects Sync & Export**: `ierp sync gh-projects` ingests GitHub repositories via GraphQL into `events.db`, and `ierp export gh-projects` exports `github_repos_all.json`.
+  * **Cloudflare R2 Bidirectional Sync**: `ierp r2 [status|push|pull|auto]` performs atomic SQLite WAL checkpointing and syncs `db/ierp_latest.sqlite` with Cloudflare R2 (`ichsanul-dev`) using pure Go AWS SigV4.
 * **Upstream Intake**:
-  * **Net Worth Snapshots**: High-level multi-asset valuation totals feed `ierp insert-snapshot`.
+  * **Portfolio Snapshots**: `ierp sync portfolio` reads `portfolio-integration/data/latest_snapshot.json`, inserts `networth_snapshots`, and calculates sovereign runway.
   * **Commitments & Burn**: Fixed monthly commitments feed `ierp insert-commitment` for runway calculations.
 * **Strict Boundary**: Unstructured knowledge, freeform essays, and daily thoughts belong in `digital-graveyard`, NOT in `ierp`. Structured operational events, contacts, and life ops tasks belong in `ierp`.
 
@@ -53,6 +54,9 @@ Code in `internal/` is organized by bounded domain services:
 | `internal/media` | Media items, logs, idempotent upserts, and profile links | `media_items`, `links` |
 | `internal/dashboard`| Embedded HTTP dashboard server (`embed.FS`) & GPS webhook receiver | HTTP Handlers |
 | `internal/audit` | Life audit & pulse engine scanning across all life domains | All |
+| `internal/r2` | Pure Go Cloudflare R2 AWS SigV4 backup, pull, and auto-sync with WAL checkpoint | All |
+| `internal/portfolio`| Automated multi-asset portfolio snapshot ingestion & sovereign runway sync | `networth_snapshots` |
+| `internal/ghrepos` | GitHub GraphQL API repository ingestion & portfolio showcase export | `github_repositories` |
 | `cmd/ierp` | Standalone CLI entrypoint with subcommands | CLI Dispatcher |
 
 ---

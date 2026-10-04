@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -19,8 +21,11 @@ import (
 	"github.com/nichsedge/ierp/internal/finance"
 	"github.com/nichsedge/ierp/internal/gadgets"
 	"github.com/nichsedge/ierp/internal/garden"
+	"github.com/nichsedge/ierp/internal/ghrepos"
 	"github.com/nichsedge/ierp/internal/lifeops"
+	"github.com/nichsedge/ierp/internal/portfolio"
 	"github.com/nichsedge/ierp/internal/projects"
+	"github.com/nichsedge/ierp/internal/r2"
 	"github.com/nichsedge/ierp/internal/radar"
 	"github.com/nichsedge/ierp/internal/reviews"
 	"github.com/nichsedge/ierp/internal/vendors"
@@ -110,6 +115,32 @@ func main() {
 		handleExportGarden(args)
 	case "export-commerce":
 		handleExportCommerce(args)
+	case "export-github", "export-gh-projects":
+		handleExportGitHub(args)
+	case "export":
+		if len(args) > 0 && (args[0] == "gh-projects" || args[0] == "github") {
+			handleExportGitHub(args[1:])
+		} else if len(args) > 0 && args[0] == "garden" {
+			handleExportGarden(args[1:])
+		} else if len(args) > 0 && args[0] == "commerce" {
+			handleExportCommerce(args[1:])
+		} else {
+			fmt.Println("Usage: ierp export [gh-projects|garden|commerce]")
+		}
+	case "sync-portfolio":
+		handleSyncPortfolio(args)
+	case "sync-github", "sync-gh-projects":
+		handleSyncGitHub(args)
+	case "sync":
+		if len(args) > 0 && args[0] == "portfolio" {
+			handleSyncPortfolio(args[1:])
+		} else if len(args) > 0 && (args[0] == "gh-projects" || args[0] == "github") {
+			handleSyncGitHub(args[1:])
+		} else {
+			fmt.Println("Usage: ierp sync [portfolio|gh-projects]")
+		}
+	case "r2":
+		handleR2(args)
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -138,6 +169,12 @@ func printUsage() {
 	fmt.Println("  insert-commitment    Record a recurring fixed burn expense")
 	fmt.Println("  commitments          List recurring financial commitments")
 	fmt.Println("  runway               Calculate sovereign runway and wealth metrics")
+	fmt.Println("  r2                   Cloudflare R2 sync (status, push, pull, auto)")
+	fmt.Println("  sync portfolio       Ingest latest multi-asset portfolio snapshot & runway")
+	fmt.Println("  sync gh-projects     Sync GitHub repositories into events.db")
+	fmt.Println("  export gh-projects   Export GitHub repositories to github_repos_all.json")
+	fmt.Println("  export garden        Export Digital Garden notes (projects, PDRs, retros, gadgets)")
+	fmt.Println("  export commerce      Export payment destinations and referrals")
 	fmt.Println("  insert-maintenance   Schedule preventive maintenance or document renewal")
 	fmt.Println("  maintenance          List scheduled maintenance items")
 	fmt.Println("  complete-maintenance Mark maintenance task completed and reschedule")
@@ -1308,3 +1345,95 @@ func handleExportCommerce(args []string) {
 	fmt.Printf("  Payment Accounts: %d accounts -> pay.json\n", payCount)
 	fmt.Printf("  Referral Codes:   %d active links -> referrals.json\n", refCount)
 }
+
+func handleR2(args []string) {
+	subcmd := "auto"
+	if len(args) > 0 {
+		subcmd = args[0]
+	}
+
+	creds, err := r2.LoadCredentials()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sR2 credentials error: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+
+	dbPath := config.DBPath()
+	ctx := context.Background()
+
+	switch subcmd {
+	case "status":
+		if err := r2.Status(ctx, creds, dbPath, r2.DefaultKey); err != nil {
+			fmt.Fprintf(os.Stderr, "%sR2 status failed: %v%s\n", config.Red, err, config.Reset)
+			os.Exit(1)
+		}
+	case "push":
+		if err := r2.Push(ctx, creds, dbPath, r2.DefaultKey); err != nil {
+			fmt.Fprintf(os.Stderr, "%sR2 push failed: %v%s\n", config.Red, err, config.Reset)
+			os.Exit(1)
+		}
+	case "pull":
+		if err := r2.Pull(ctx, creds, dbPath, r2.DefaultKey); err != nil {
+			fmt.Fprintf(os.Stderr, "%sR2 pull failed: %v%s\n", config.Red, err, config.Reset)
+			os.Exit(1)
+		}
+	case "auto":
+		if err := r2.AutoSync(ctx, creds, dbPath, r2.DefaultKey); err != nil {
+			fmt.Fprintf(os.Stderr, "%sR2 auto-sync failed: %v%s\n", config.Red, err, config.Reset)
+			os.Exit(1)
+		}
+	default:
+		fmt.Fprintf(os.Stderr, "%sUnknown R2 action: %s. Use status, push, pull, or auto%s\n", config.Red, subcmd, config.Reset)
+		os.Exit(1)
+	}
+}
+
+func handleSyncPortfolio(args []string) {
+	fs := flag.NewFlagSet("sync-portfolio", flag.ExitOnError)
+	path := fs.String("path", "", "Path to portfolio data directory")
+	_ = fs.Parse(args)
+
+	database := openDB()
+	defer database.Close()
+
+	if err := portfolio.SyncPortfolio(database, *path); err != nil {
+		fmt.Fprintf(os.Stderr, "%sPortfolio sync failed: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+}
+
+func handleSyncGitHub(args []string) {
+	database := openDB()
+	defer database.Close()
+
+	fmt.Printf("%sSyncing GitHub repositories via GraphQL...%s\n", config.Cyan, config.Reset)
+	count, err := ghrepos.SyncGitHubRepos(context.Background(), database)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sGitHub sync failed: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+	fmt.Printf("%s✓ Synced %d repositories into events.db%s\n", config.Green, count, config.Reset)
+}
+
+func handleExportGitHub(args []string) {
+	fs := flag.NewFlagSet("export-github", flag.ExitOnError)
+	output := fs.String("output", "", "Output file path (default: nichsedge.github.io/data/github_repos_all.json)")
+	_ = fs.Parse(args)
+
+	database := openDB()
+	defer database.Close()
+
+	outPath := *output
+	if outPath == "" {
+		home, _ := os.UserHomeDir()
+		outPath = filepath.Join(home, "Projects", "nichsedge.github.io", "data", "github_repos_all.json")
+	}
+
+	count, err := ghrepos.ExportGitHubRepos(context.Background(), database, outPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sGitHub export failed: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+	fmt.Printf("%s✓ Exported %d repositories to %s%s\n", config.Green, count, outPath, config.Reset)
+}
+

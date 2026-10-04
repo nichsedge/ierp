@@ -126,6 +126,10 @@ ierp dashboard --port 8921
 | `ierp search "<query>"` | Fast SQLite FTS5 full-text search with BM25 relevance ranking and note snippets. |
 | `ierp export-garden` | Export projects, decisions, reviews, and gadgets to Digital Garden markdown notes. |
 | `ierp export-commerce` | Export payment accounts and referral links to `pay.json` and `referrals.json`. |
+| `ierp sync portfolio` | Ingest multi-asset portfolio snapshot & update sovereign runway. |
+| `ierp sync gh-projects` | Ingest GitHub repositories via GraphQL API into SQLite `events.db`. |
+| `ierp export gh-projects` | Export all repositories to `nichsedge.github.io/data/github_repos_all.json`. |
+| `ierp r2 [status\|push\|pull\|auto]` | Bidirectional Cloudflare R2 synchronization with pure Go AWS SigV4 & WAL checkpointing. |
 | `ierp dashboard` | Launch zero-dependency embedded web dashboard server (`--port`, `--host`). |
 
 ---
