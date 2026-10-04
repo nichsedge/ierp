@@ -28,7 +28,7 @@ from pathlib import Path
 
 R2_BUCKET = "ichsanul-dev"
 R2_KEY_LATEST = "db/ierp_latest.sqlite"
-DB_SOURCE = Path.home() / "Projects" / "ierp" / "ierp" / "events.db"
+DB_SOURCE = Path(os.environ.get("IERP_DB", Path.home() / "Projects" / "ierp" / "events.db")).resolve()
 LOCAL_BACKUPS_DIR = Path.home() / "Projects" / "ierp" / "backups"
 
 CREDS_CANDIDATES = [
