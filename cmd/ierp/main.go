@@ -44,6 +44,8 @@ func main() {
 		handleListEvents(args)
 	case "search":
 		handleSearchEvents(args)
+	case "delete", "delete-event":
+		handleDeleteEvent(args)
 	case "contacts":
 		handleListContacts(args)
 	case "insert-contact":
@@ -125,6 +127,7 @@ func printUsage() {
 	fmt.Println("  insert               Log a structured timeline event")
 	fmt.Println("  list                 List recent events with filters")
 	fmt.Println("  search               FTS5 full-text search with BM25 ranking")
+	fmt.Println("  delete               Delete a timeline event by ID")
 	fmt.Println("  contacts             List CRM contacts")
 	fmt.Println("  insert-contact       Record a new CRM contact")
 	fmt.Println("  set-tier             Update Dunbar tier & cadence for a contact")
@@ -312,6 +315,43 @@ func handleSearchEvents(args []string) {
 			fmt.Printf("     Snippet: %s\n", r.NotesSnip)
 		}
 	}
+}
+
+func handleDeleteEvent(args []string) {
+	fs := flag.NewFlagSet("delete", flag.ExitOnError)
+	idFlag := fs.Int("id", 0, "Event ID to delete")
+	_ = fs.Parse(args)
+
+	var targetID int
+	if *idFlag > 0 {
+		targetID = *idFlag
+	} else if len(fs.Args()) > 0 {
+		id, err := strconv.Atoi(fs.Args()[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%sError: invalid event ID '%s'%s\n", config.Red, fs.Args()[0], config.Reset)
+			os.Exit(1)
+		}
+		targetID = id
+	} else {
+		fmt.Fprintf(os.Stderr, "%sError: event ID is required (e.g. ierp delete <id> or ierp delete -id <id>)%s\n", config.Red, config.Reset)
+		os.Exit(1)
+	}
+
+	database := openDB()
+	defer database.Close()
+
+	deleted, err := events.DeleteEvent(database, targetID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sFailed to delete event #%d: %v%s\n", config.Red, targetID, err, config.Reset)
+		os.Exit(1)
+	}
+
+	if !deleted {
+		fmt.Printf("%sEvent #%d not found%s\n", config.Yellow, targetID, config.Reset)
+		return
+	}
+
+	fmt.Printf("%sEvent #%d deleted successfully.%s\n", config.Green, targetID, config.Reset)
 }
 
 func handleListContacts(args []string) {
