@@ -28,6 +28,7 @@ import (
 	"github.com/nichsedge/ierp/internal/r2"
 	"github.com/nichsedge/ierp/internal/radar"
 	"github.com/nichsedge/ierp/internal/reviews"
+	"github.com/nichsedge/ierp/internal/transparency"
 	"github.com/nichsedge/ierp/internal/vendors"
 )
 
@@ -63,6 +64,10 @@ func main() {
 		handleDailyReconnection(args)
 	case "insert-snapshot":
 		handleInsertSnapshot(args)
+	case "update-snapshot":
+		handleUpdateSnapshot(args)
+	case "delete-snapshot":
+		handleDeleteSnapshot(args)
 	case "snapshots":
 		handleListSnapshots(args)
 	case "insert-commitment":
@@ -117,6 +122,8 @@ func main() {
 		handleExportCommerce(args)
 	case "export-github", "export-gh-projects":
 		handleExportGitHub(args)
+	case "export-transparency":
+		handleExportTransparency(args)
 	case "export":
 		if len(args) > 0 && (args[0] == "gh-projects" || args[0] == "github") {
 			handleExportGitHub(args[1:])
@@ -124,8 +131,10 @@ func main() {
 			handleExportGarden(args[1:])
 		} else if len(args) > 0 && args[0] == "commerce" {
 			handleExportCommerce(args[1:])
+		} else if len(args) > 0 && args[0] == "transparency" {
+			handleExportTransparency(args[1:])
 		} else {
-			fmt.Println("Usage: ierp export [gh-projects|garden|commerce]")
+			fmt.Println("Usage: ierp export [gh-projects|garden|commerce|transparency]")
 		}
 	case "sync-portfolio":
 		handleSyncPortfolio(args)
@@ -165,6 +174,9 @@ func printUsage() {
 	fmt.Println("  radar                Show relationship reconnection radar")
 	fmt.Println("  daily-reconnection   Get the top priority relationship needing touchpoint today")
 	fmt.Println("  insert-snapshot      Record a balance sheet / net worth snapshot")
+	fmt.Println("  update-snapshot      Correct an existing snapshot in place")
+	fmt.Println("  delete-snapshot      Void a snapshot by ID")
+	fmt.Println("  export transparency  Export privacy-safe runway & allocation metrics")
 	fmt.Println("  snapshots            List net worth balance snapshots")
 	fmt.Println("  insert-commitment    Record a recurring fixed burn expense")
 	fmt.Println("  commitments          List recurring financial commitments")
@@ -562,10 +574,26 @@ func handleInsertSnapshot(args []string) {
 	liab := fs.Float64("liabilities", 0, "Liabilities/Debt")
 	currency := fs.String("currency", "IDR", "Currency")
 	notes := fs.String("notes", "", "Notes")
+	force := fs.Bool("force", false, "Bypass the deviation guard for a large swing in liquid cash")
 	_ = fs.Parse(args)
 
 	database := openDB()
 	defer database.Close()
+
+	prev, err := finance.GetLatestSnapshot(database)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+
+	if dev := snapshotDeviation(prev, *liquid); dev > finance.MaxSnapshotDeviation {
+		if !*force {
+			printDeviationWarning(prev, *liquid, dev)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "%s⚠️  --force used: recording a %.0f%% deviation from %s%s\n",
+			config.Yellow, dev*100, prev.SnapshotDate, config.Reset)
+	}
 
 	id, err := finance.InsertSnapshot(database, finance.Snapshot{
 		SnapshotDate: *dateStr,
@@ -583,6 +611,141 @@ func handleInsertSnapshot(args []string) {
 
 	netWorth := (*liquid + *invest + *assets) - *liab
 	fmt.Printf("%sBalance sheet snapshot #%d saved!%s Net Worth: %s %.2f\n", config.Green, id, config.Reset, *currency, netWorth)
+}
+
+func handleUpdateSnapshot(args []string) {
+	fs := flag.NewFlagSet("update-snapshot", flag.ExitOnError)
+	id := fs.Int("id", 0, "Snapshot ID to correct (required)")
+	dateStr := fs.String("date", "", "Snapshot date (YYYY-MM-DD)")
+	liquid := fs.Float64("liquid", 0, "Liquid cash reserves")
+	invest := fs.Float64("investments", 0, "Investments")
+	assets := fs.Float64("assets", 0, "Hard assets")
+	liab := fs.Float64("liabilities", 0, "Liabilities/Debt")
+	currency := fs.String("currency", "IDR", "Currency")
+	notes := fs.String("notes", "", "Notes")
+	force := fs.Bool("force", false, "Bypass the deviation guard for a large swing in liquid cash")
+	_ = fs.Parse(args)
+
+	if *id <= 0 {
+		fmt.Fprintf(os.Stderr, "%sError: --id is required%s\n", config.Red, config.Reset)
+		os.Exit(1)
+	}
+
+	database := openDB()
+	defer database.Close()
+
+	snaps, err := finance.ListSnapshots(database, 500)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+
+	targetIndex := -1
+	for i := range snaps {
+		if snaps[i].ID == *id {
+			targetIndex = i
+			break
+		}
+	}
+	if targetIndex < 0 {
+		fmt.Fprintf(os.Stderr, "%sError: snapshot #%d not found%s\n", config.Red, *id, config.Reset)
+		os.Exit(1)
+	}
+
+	updated := snaps[targetIndex]
+	provided := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { provided[f.Name] = true })
+	if provided["date"] {
+		updated.SnapshotDate = *dateStr
+	}
+	if provided["liquid"] {
+		updated.LiquidCash = *liquid
+	}
+	if provided["investments"] {
+		updated.Investments = *invest
+	}
+	if provided["assets"] {
+		updated.HardAssets = *assets
+	}
+	if provided["liabilities"] {
+		updated.Liabilities = *liab
+	}
+	if provided["currency"] {
+		updated.Currency = *currency
+	}
+	if provided["notes"] {
+		updated.Notes = *notes
+	}
+
+	// Compare against the most recent snapshot older than the one being corrected.
+	var prev *finance.Snapshot
+	if targetIndex+1 < len(snaps) {
+		prev = &snaps[targetIndex+1]
+	}
+	if dev := snapshotDeviation(prev, updated.LiquidCash); dev > finance.MaxSnapshotDeviation {
+		if !*force {
+			printDeviationWarning(prev, updated.LiquidCash, dev)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "%s⚠️  --force used: recording a %.0f%% deviation from %s%s\n",
+			config.Yellow, dev*100, prev.SnapshotDate, config.Reset)
+	}
+
+	ok, err := finance.UpdateSnapshot(database, *id, updated)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+	if !ok {
+		fmt.Fprintf(os.Stderr, "%sError: snapshot #%d not found%s\n", config.Red, *id, config.Reset)
+		os.Exit(1)
+	}
+
+	netWorth := (updated.LiquidCash + updated.Investments + updated.HardAssets) - updated.Liabilities
+	fmt.Printf("%sSnapshot #%d updated!%s %s | Net Worth: %s %.2f\n",
+		config.Green, *id, config.Reset, updated.SnapshotDate, updated.Currency, netWorth)
+}
+
+func handleDeleteSnapshot(args []string) {
+	fs := flag.NewFlagSet("delete-snapshot", flag.ExitOnError)
+	id := fs.Int("id", 0, "Snapshot ID to void (required)")
+	_ = fs.Parse(args)
+
+	if *id <= 0 {
+		fmt.Fprintf(os.Stderr, "%sError: --id is required%s\n", config.Red, config.Reset)
+		os.Exit(1)
+	}
+
+	database := openDB()
+	defer database.Close()
+
+	ok, err := finance.DeleteSnapshot(database, *id)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+	if !ok {
+		fmt.Fprintf(os.Stderr, "%sError: snapshot #%d not found%s\n", config.Red, *id, config.Reset)
+		os.Exit(1)
+	}
+
+	fmt.Printf("%sSnapshot #%d voided%s\n", config.Green, *id, config.Reset)
+}
+
+// snapshotDeviation returns the relative change in liquid cash versus the previous snapshot.
+func snapshotDeviation(prev *finance.Snapshot, liquid float64) float64 {
+	if prev == nil || prev.LiquidCash <= 0 {
+		return 0
+	}
+	return finance.Deviation(prev.LiquidCash, liquid)
+}
+
+func printDeviationWarning(prev *finance.Snapshot, liquid, dev float64) {
+	fmt.Fprintf(os.Stderr, "%s⚠️  Refusing snapshot: liquid cash deviates %.0f%% from the previous one.%s\n",
+		config.Red, dev*100, config.Reset)
+	fmt.Fprintf(os.Stderr, "   Previous (%s): %s %.2f\n", prev.SnapshotDate, prev.Currency, prev.LiquidCash)
+	fmt.Fprintf(os.Stderr, "   New:              %s %.2f\n", prev.Currency, liquid)
+	fmt.Fprintf(os.Stderr, "   If this is intentional, re-run with --force.\n")
 }
 
 func handleListSnapshots(args []string) {
@@ -1327,6 +1490,24 @@ func handleExportGarden(args []string) {
 	fmt.Printf("  Hardware Gadgets:       %d notes\n", summary.Gadgets)
 }
 
+func handleExportTransparency(args []string) {
+	fs := flag.NewFlagSet("export-transparency", flag.ExitOnError)
+	dataDir := fs.String("path", "", "Target portfolio data directory")
+	_ = fs.Parse(args)
+
+	database := openDB()
+	defer database.Close()
+
+	outPath, err := transparency.Export(database, *dataDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sTransparency export failed: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+
+	fmt.Printf("%sTransparency Export Complete!%s\n", config.Green, config.Reset)
+	fmt.Printf("  Privacy-safe metrics written: %s\n", outPath)
+}
+
 func handleExportCommerce(args []string) {
 	fs := flag.NewFlagSet("export-commerce", flag.ExitOnError)
 	dataDir := fs.String("path", "", "Target portfolio data directory")
@@ -1436,4 +1617,3 @@ func handleExportGitHub(args []string) {
 	}
 	fmt.Printf("%s✓ Exported %d repositories to %s%s\n", config.Green, count, outPath, config.Reset)
 }
-

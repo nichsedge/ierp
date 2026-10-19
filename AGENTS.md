@@ -21,11 +21,16 @@ iERP is the **Central Single Source of Truth (SSOT) for Structured Personal ERP 
 * **Downstream Export & Sync Pipelines**:
   * **Digital Graveyard Deep Export**: `ierp export-garden` (or `ierp export garden`) regenerates hardware notes, strategic initiatives, decision journals, and retrospectives in `~/Projects/digital-graveyard`.
   * **Commerce Export**: `ierp export-commerce` (or `ierp export commerce`) regenerates `pay.json` and `referrals.json` in `~/Projects/nichsedge.github.io/data/`.
+  * **Sovereign Transparency Export**: `ierp export-transparency` (or `ierp export transparency`) writes `transparency.json` to `~/Projects/nichsedge.github.io/data/` — privacy-safe percentages and runway metrics only, never absolute amounts.
   * **GitHub Projects Sync & Export**: `ierp sync gh-projects` ingests GitHub repositories via GraphQL into `events.db`, and `ierp export gh-projects` exports `github_repos_all.json`.
   * **Cloudflare R2 Bidirectional Sync**: `ierp r2 [status|push|pull|auto]` performs atomic SQLite WAL checkpointing and syncs `db/ierp_latest.sqlite` with Cloudflare R2 (`ichsanul-dev`) using pure Go AWS SigV4.
 * **Upstream Intake**:
   * **Portfolio Snapshots**: `ierp sync portfolio` reads `portfolio-integration/data/latest_snapshot.json`, inserts `networth_snapshots`, and calculates sovereign runway.
   * **Commitments & Burn**: Fixed monthly commitments feed `ierp insert-commitment` for runway calculations.
+* **Balance Sheet Snapshot Workflow**:
+  * `ierp insert-snapshot` records a new balance sheet; `ierp update-snapshot --id N` corrects one in place; `ierp delete-snapshot --id N` voids one.
+  * **Deviation Guard**: both `insert-snapshot` and `update-snapshot` reject a liquid-cash swing greater than **50%** versus the previous snapshot and exit non-zero. Pass `--force` to override intentionally.
+  * Rationale: `GetLatestSnapshot` drives `runway` and every downstream export, so a single mis-scaled row silently rewrites the sovereign runway metric.
 * **Strict Boundary**: Unstructured knowledge, freeform essays, and daily thoughts belong in `digital-graveyard`, NOT in `ierp`. Structured operational events, contacts, and life ops tasks belong in `ierp`.
 
 ---
@@ -41,7 +46,7 @@ Code in `internal/` is organized by bounded domain services:
 | `internal/events` | Structured timeline logging, contact linking, FTS5 search with BM25 & snippets | `events`, `event_contacts`, `events_fts` |
 | `internal/contacts`| CRM contact management, insertion, name/ID resolution, tier assignment | `contacts` |
 | `internal/radar` | Dunbar relationship tiers (14d/60d/180d) and daily reconnection engine | `contacts`, `events` |
-| `internal/finance` | Net worth snapshots, recurring burn commitments, and sovereign runway computation | `networth_snapshots`, `recurring_commitments` |
+| `internal/finance` | Net worth snapshots, recurring burn commitments, sovereign runway computation, and snapshot deviation guard | `networth_snapshots`, `recurring_commitments` |
 | `internal/lifeops` | Preventive maintenance, due-date tracking, and recurring auto-rescheduling | `maintenance_items` |
 | `internal/projects`| Strategic initiative tracking and event linking | `projects` |
 | `internal/decisions`| Decision journal, confidence calibration, and retrospective review tracking | `decisions` |
@@ -57,6 +62,7 @@ Code in `internal/` is organized by bounded domain services:
 | `internal/r2` | Pure Go Cloudflare R2 AWS SigV4 backup, pull, and auto-sync with WAL checkpoint | All |
 | `internal/portfolio`| Automated multi-asset portfolio snapshot ingestion & sovereign runway sync | `networth_snapshots` |
 | `internal/ghrepos` | GitHub GraphQL API repository ingestion & portfolio showcase export | `github_repositories` |
+| `internal/transparency` | Privacy-safe transparency report (allocation & burn percentages, runway metrics) export | `networth_snapshots`, `recurring_commitments` |
 | `cmd/ierp` | Standalone CLI entrypoint with subcommands | CLI Dispatcher |
 
 ---

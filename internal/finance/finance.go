@@ -47,6 +47,55 @@ func InsertSnapshot(database *sql.DB, s Snapshot) (int, error) {
 	return int(id), nil
 }
 
+// MaxSnapshotDeviation is the maximum relative change tolerated between
+// consecutive snapshots before the CLI demands an explicit --force.
+const MaxSnapshotDeviation = 0.5
+
+// Deviation returns the relative change between two amounts.
+func Deviation(prev, current float64) float64 {
+	base := math.Abs(prev)
+	if base < 1 {
+		base = 1
+	}
+	return math.Abs(current-prev) / base
+}
+
+// UpdateSnapshot corrects an existing snapshot in place.
+func UpdateSnapshot(database *sql.DB, id int, s Snapshot) (bool, error) {
+	if s.Currency == "" {
+		s.Currency = "IDR"
+	}
+
+	res, err := database.Exec(`
+		UPDATE networth_snapshots
+		SET snapshot_date = ?, liquid_cash = ?, investments = ?, hard_assets = ?,
+		    liabilities = ?, currency = ?, notes = ?
+		WHERE id = ?
+	`, s.SnapshotDate, s.LiquidCash, s.Investments, s.HardAssets, s.Liabilities, s.Currency, s.Notes, id)
+	if err != nil {
+		return false, fmt.Errorf("failed to update snapshot: %w", err)
+	}
+
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return ra > 0, nil
+}
+
+// DeleteSnapshot removes a snapshot by ID.
+func DeleteSnapshot(database *sql.DB, id int) (bool, error) {
+	res, err := database.Exec("DELETE FROM networth_snapshots WHERE id = ?", id)
+	if err != nil {
+		return false, fmt.Errorf("failed to delete snapshot: %w", err)
+	}
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return ra > 0, nil
+}
+
 // ListSnapshots retrieves net worth snapshots in chronological order.
 func ListSnapshots(database *sql.DB, limit int) ([]Snapshot, error) {
 	if limit <= 0 {
