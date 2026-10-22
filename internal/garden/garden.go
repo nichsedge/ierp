@@ -125,7 +125,7 @@ func ExportProjects(database *sql.DB, gardenRoot string) (int, error) {
 		content := fmt.Sprintf(`---
 title: "%s"
 date: %s
-tags: [project, strategic-initiative]
+tags: [project]
 publish_external: true
 status: "%s"
 priority: "%s"
@@ -174,7 +174,7 @@ func ExportDecisions(database *sql.DB, gardenRoot string) (int, error) {
 		content := fmt.Sprintf(`---
 title: "PDR: %s"
 date: %s
-tags: [decision, pdr]
+tags: [case-study, review]
 publish_external: true
 status: "%s"
 confidence: %d
@@ -230,7 +230,7 @@ func ExportRetrospectives(database *sql.DB, gardenRoot string) (int, error) {
 		content := fmt.Sprintf(`---
 title: "%s Retrospective: %s"
 date: %s
-tags: [retrospective, double-loop-learning]
+tags: [review, reflection]
 publish_external: true
 period_type: "%s"
 rating: %d
@@ -289,7 +289,7 @@ func ExportGadgets(database *sql.DB, gardenRoot string) (int, error) {
 		content := fmt.Sprintf(`---
 title: "%s"
 date: %s
-tags: [gadget, hardware, entity]
+tags: [gadget]
 publish_external: true
 category: "%s"
 brand: "%s"
