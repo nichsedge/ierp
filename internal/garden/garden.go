@@ -283,7 +283,7 @@ func ExportGadgets(database *sql.DB, gardenRoot string) (int, error) {
 		if !g.IsPublic {
 			continue
 		}
-		filename := fmt.Sprintf("%s.md", Slugify(g.Name))
+		filename := fmt.Sprintf("%s.md", g.Name)
 		filePath := filepath.Join(dir, filename)
 
 		content := fmt.Sprintf(`---
