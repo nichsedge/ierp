@@ -103,7 +103,9 @@ ierp dashboard --port 8921
 | :--- | :--- |
 | `ierp init-db` | Initialize SQLite schema, indexes, and FTS5 triggers. |
 | `ierp runway` | Display sovereign runway in months, net worth, and monthly burn rate. |
-| `ierp insert-snapshot` | Record a net worth balance snapshot (`--liquid`, `--investments`, `--assets`, `--liabilities`). |
+| `ierp insert-snapshot` | Record a net worth balance snapshot (`--liquid`, `--investments`, `--assets`, `--liabilities`, `--force`). |
+| `ierp update-snapshot --id <ID>` | Correct an existing net worth snapshot in place (`--liquid`, `--investments`, `--force`). |
+| `ierp delete-snapshot --id <ID>` | Permanently remove/void a net worth snapshot. |
 | `ierp snapshots` | List historical net worth balance snapshots. |
 | `ierp insert-commitment` | Record a recurring burn commitment (`--name`, `--amount`, `--frequency`, `--category`). |
 | `ierp commitments` | List recurring financial commitments and monthly normalized burn. |
@@ -126,7 +128,8 @@ ierp dashboard --port 8921
 | `ierp search "<query>"` | Fast SQLite FTS5 full-text search with BM25 relevance ranking and note snippets. |
 | `ierp export-garden` | Export projects, decisions, reviews, and gadgets to Digital Garden markdown notes. |
 | `ierp export-commerce` | Export payment accounts and referral links to `pay.json` and `referrals.json`. |
-| `ierp sync portfolio` | Ingest multi-asset portfolio snapshot & update sovereign runway. |
+| `ierp export-transparency` | Export privacy-safe percentage-based runway and asset metrics to `transparency.json`. |
+| `ierp sync portfolio` | Ingest multi-asset portfolio snapshot & update sovereign runway (`--force` to override deviation guard). |
 | `ierp sync gh-projects` | Ingest GitHub repositories via GraphQL API into SQLite `events.db`. |
 | `ierp export gh-projects` | Export all repositories to `nichsedge.github.io/data/github_repos_all.json`. |
 | `ierp r2 [status\|push\|pull\|auto]` | Bidirectional Cloudflare R2 synchronization with pure Go AWS SigV4 & WAL checkpointing. |

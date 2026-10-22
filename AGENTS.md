@@ -29,7 +29,7 @@ iERP is the **Central Single Source of Truth (SSOT) for Structured Personal ERP 
   * **Commitments & Burn**: Fixed monthly commitments feed `ierp insert-commitment` for runway calculations.
 * **Balance Sheet Snapshot Workflow**:
   * `ierp insert-snapshot` records a new balance sheet; `ierp update-snapshot --id N` corrects one in place; `ierp delete-snapshot --id N` voids one.
-  * **Deviation Guard**: both `insert-snapshot` and `update-snapshot` reject a liquid-cash swing greater than **50%** versus the previous snapshot and exit non-zero. Pass `--force` to override intentionally.
+  * **Deviation Guard**: `insert-snapshot`, `update-snapshot`, and `sync portfolio` reject a liquid-cash swing greater than **50%** versus the previous snapshot and exit non-zero. Pass `--force` to override intentionally.
   * Rationale: `GetLatestSnapshot` drives `runway` and every downstream export, so a single mis-scaled row silently rewrites the sovereign runway metric.
 * **Strict Boundary**: Unstructured knowledge, freeform essays, and daily thoughts belong in `digital-graveyard`, NOT in `ierp`. Structured operational events, contacts, and life ops tasks belong in `ierp`.
 

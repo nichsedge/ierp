@@ -31,7 +31,7 @@ type SnapshotPayload struct {
 }
 
 // SyncPortfolio ingests the latest portfolio snapshot into events.db.
-func SyncPortfolio(db *sql.DB, portfolioDataDir string) error {
+func SyncPortfolio(db *sql.DB, portfolioDataDir string, force bool) error {
 	if portfolioDataDir == "" {
 		home, _ := os.UserHomeDir()
 		portfolioDataDir = filepath.Join(home, "Projects", "portfolio-integration", "data")
@@ -93,6 +93,15 @@ func SyncPortfolio(db *sql.DB, portfolioDataDir string) error {
 
 	existing, err := finance.GetLatestSnapshot(db)
 	if err != nil || existing == nil || existing.SnapshotDate != dateStr {
+		if existing != nil {
+			if dev := finance.Deviation(existing.LiquidCash, liquidCash); dev > finance.MaxSnapshotDeviation {
+				if !force {
+					return fmt.Errorf("liquid cash deviation %.1f%% exceeds 50%% threshold (previous: Rp %.0f, incoming: Rp %.0f); pass --force to ingest", dev*100, existing.LiquidCash, liquidCash)
+				}
+				fmt.Fprintf(os.Stderr, "⚠️  --force used: recording a %.0f%% deviation from %s\n", dev*100, existing.SnapshotDate)
+			}
+		}
+
 		snap := finance.Snapshot{
 			SnapshotDate: dateStr,
 			LiquidCash:   liquidCash,

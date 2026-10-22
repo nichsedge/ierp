@@ -1572,12 +1572,13 @@ func handleR2(args []string) {
 func handleSyncPortfolio(args []string) {
 	fs := flag.NewFlagSet("sync-portfolio", flag.ExitOnError)
 	path := fs.String("path", "", "Path to portfolio data directory")
+	force := fs.Bool("force", false, "Force ingestion even if liquid cash deviates by >50%")
 	_ = fs.Parse(args)
 
 	database := openDB()
 	defer database.Close()
 
-	if err := portfolio.SyncPortfolio(database, *path); err != nil {
+	if err := portfolio.SyncPortfolio(database, *path, *force); err != nil {
 		fmt.Fprintf(os.Stderr, "%sPortfolio sync failed: %v%s\n", config.Red, err, config.Reset)
 		os.Exit(1)
 	}
