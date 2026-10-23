@@ -21,17 +21,20 @@ func Open(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to open database at %s: %w", dbPath, err)
 	}
 
-	if _, err := database.Exec("PRAGMA journal_mode = WAL;"); err != nil {
-		database.Close()
-		return nil, fmt.Errorf("failed to set WAL journal mode: %w", err)
+	pragmas := []string{
+		"PRAGMA journal_mode = WAL;",
+		"PRAGMA synchronous = NORMAL;",
+		"PRAGMA temp_store = MEMORY;",
+		"PRAGMA cache_size = -20000;",
+		"PRAGMA busy_timeout = 5000;",
+		"PRAGMA foreign_keys = ON;",
 	}
-	if _, err := database.Exec("PRAGMA busy_timeout = 5000;"); err != nil {
-		database.Close()
-		return nil, fmt.Errorf("failed to set busy_timeout: %w", err)
-	}
-	if _, err := database.Exec("PRAGMA foreign_keys = ON;"); err != nil {
-		database.Close()
-		return nil, fmt.Errorf("failed to enable foreign_keys: %w", err)
+
+	for _, p := range pragmas {
+		if _, err := database.Exec(p); err != nil {
+			database.Close()
+			return nil, fmt.Errorf("failed executing %s: %w", p, err)
+		}
 	}
 
 	database.SetMaxOpenConns(1)
@@ -342,6 +345,7 @@ func InitDB(dbPath string, verbose bool) error {
     CREATE INDEX IF NOT EXISTS idx_contacts_source ON contacts(source);
     CREATE INDEX IF NOT EXISTS idx_contacts_tier ON contacts(tier);
     CREATE INDEX IF NOT EXISTS idx_event_contacts_pair ON event_contacts(event_id, contact_id);
+    CREATE INDEX IF NOT EXISTS idx_event_contacts_contact ON event_contacts(contact_id);
     CREATE INDEX IF NOT EXISTS idx_vendors_name ON vendors(name);
     CREATE INDEX IF NOT EXISTS idx_vendors_category ON vendors(category);
     CREATE INDEX IF NOT EXISTS idx_vendors_favorite ON vendors(favorite);
