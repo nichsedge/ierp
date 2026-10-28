@@ -128,17 +128,27 @@ func ListEvents(database *sql.DB, opts ListOptions) ([]Event, int, error) {
 	}
 
 	if opts.FromDate != "" {
-		whereClauses = append(whereClauses, "(e.start_date >= ? OR (e.start_date IS NULL AND e.raw_date >= ?))")
-		params = append(params, opts.FromDate, opts.FromDate)
+		fromBound := opts.FromDate
+		if len(fromBound) >= 10 {
+			fromBound = fromBound[:10]
+			whereClauses = append(whereClauses, "substr(COALESCE(e.start_date, e.raw_date, ''), 1, 10) >= ?")
+			params = append(params, fromBound)
+		} else {
+			whereClauses = append(whereClauses, "(e.start_date >= ? OR (e.start_date IS NULL AND e.raw_date >= ?))")
+			params = append(params, opts.FromDate, opts.FromDate)
+		}
 	}
 
 	if opts.ToDate != "" {
 		toBound := opts.ToDate
-		if len(opts.ToDate) == 10 {
-			toBound += " 23:59:59"
+		if len(toBound) >= 10 {
+			toBound = toBound[:10]
+			whereClauses = append(whereClauses, "substr(COALESCE(e.start_date, e.raw_date, ''), 1, 10) <= ?")
+			params = append(params, toBound)
+		} else {
+			whereClauses = append(whereClauses, "(e.start_date <= ? OR (e.start_date IS NULL AND e.raw_date <= ?))")
+			params = append(params, toBound, toBound)
 		}
-		whereClauses = append(whereClauses, "(e.start_date <= ? OR (e.start_date IS NULL AND e.raw_date <= ?))")
-		params = append(params, toBound, toBound)
 	}
 
 	whereSQL := "1=1"
