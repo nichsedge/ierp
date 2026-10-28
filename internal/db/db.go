@@ -7,13 +7,34 @@ import (
 	"strings"
 
 	"github.com/nichsedge/ierp/internal/config"
+	"github.com/tursodatabase/libsql-client-go/libsql"
 	_ "modernc.org/sqlite"
 )
 
 // Open returns an optimized SQLite database connection with WAL mode, foreign keys, and busy timeout.
+// If dbPath is a remote libSQL/Turso URL (libsql:// or https://), it uses the pure Go libSQL driver.
 func Open(dbPath string) (*sql.DB, error) {
 	if dbPath == "" {
 		dbPath = config.DBPath()
+	}
+
+	if config.IsRemoteDB(dbPath) {
+		token := config.TursoAuthToken()
+		connector, err := libsql.NewConnector(dbPath, libsql.WithAuthToken(token))
+		if err != nil {
+			return nil, fmt.Errorf("failed creating libsql connector for %s: %w", dbPath, err)
+		}
+
+		database := sql.OpenDB(connector)
+
+		if _, err := database.Exec("PRAGMA foreign_keys = ON;"); err != nil {
+			database.Close()
+			return nil, fmt.Errorf("failed executing PRAGMA foreign_keys = ON: %w", err)
+		}
+
+		database.SetMaxOpenConns(10)
+		database.SetMaxIdleConns(5)
+		return database, nil
 	}
 
 	database, err := sql.Open("sqlite", dbPath)

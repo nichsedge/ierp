@@ -18,6 +18,10 @@ const (
 
 // DBPath returns the configured or default database path.
 func DBPath() string {
+	if u := TursoURL(); u != "" {
+		return u
+	}
+
 	if p := os.Getenv("IERP_DB"); p != "" {
 		abs, err := filepath.Abs(p)
 		if err == nil {
@@ -45,6 +49,27 @@ func DBPath() string {
 	}
 
 	return "events.db"
+}
+
+// TursoURL returns the configured Turso / libSQL database URL if set.
+func TursoURL() string {
+	if u := os.Getenv("TURSO_DATABASE_URL"); u != "" {
+		return u
+	}
+	return os.Getenv("IERP_TURSO_URL")
+}
+
+// TursoAuthToken returns the configured Turso auth token if set.
+func TursoAuthToken() string {
+	if t := os.Getenv("TURSO_AUTH_TOKEN"); t != "" {
+		return t
+	}
+	return os.Getenv("IERP_TURSO_TOKEN")
+}
+
+// IsRemoteDB returns true if the database target is a remote libSQL / Turso instance.
+func IsRemoteDB(target string) bool {
+	return len(target) > 8 && (target[:9] == "libsql://" || target[:8] == "https://" || target[:7] == "http://")
 }
 
 // MediaDir returns the configured or default media storage directory.

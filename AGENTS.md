@@ -2,7 +2,10 @@
 
 ## ⚡ Core Philosophy & Architecture
 
-* **Zero-CGO Pure Go**: Built with Go 1.24+ standard library and `modernc.org/sqlite` (`database/sql`). Compiles to a fast, standalone static binary with zero CGO dependencies.
+* **Zero-CGO Pure Go & Dual Database Engine**: Built with Go standard library, pure Go SQLite (`modernc.org/sqlite`), and Turso libSQL (`github.com/tursodatabase/libsql-client-go/libsql`). Compiles to a fast, standalone static binary with zero CGO dependencies across x86_64 and aarch64 (Termux).
+* **Dual Database Target Support**:
+  * **Remote Turso (libSQL)**: When `TURSO_DATABASE_URL` (or `IERP_TURSO_URL`) is defined, connects directly to Turso over HTTPS via Hrana protocol. Handles multi-device concurrent writes natively without file snapshot drift.
+  * **Local SQLite (WAL mode)**: Defaults to local `events.db` with WAL mode (`PRAGMA journal_mode = WAL;`), foreign keys enabled (`PRAGMA foreign_keys = ON;`), and busy timeouts (`PRAGMA busy_timeout = 5000;`) when remote URL is unset.
 * **Strict "No Backward Compatibility"**: Always target modern Go idiom, clean package boundaries, and strict type safety. Never create backward compatibility shims or legacy aliases.
 * **Local SQLite with WAL Mode**: All database connections MUST use WAL (`PRAGMA journal_mode = WAL;`), foreign keys enabled (`PRAGMA foreign_keys = ON;`), and busy timeouts (`PRAGMA busy_timeout = 5000;`) to guarantee non-blocking concurrent reads and writes between background tasks and the embedded web dashboard.
 * **Direct Binary Execution**:
