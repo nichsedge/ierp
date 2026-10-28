@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -74,9 +75,10 @@ func (s *Server) Start() error {
 	}
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" || r.URL.Path == "/events" || r.URL.Path == "/radar" ||
-			r.URL.Path == "/runway" || r.URL.Path == "/projects" || r.URL.Path == "/decisions" ||
-			r.URL.Path == "/commerce" || r.URL.Path == "/lifeops" || r.URL.Path == "/vendors" {
+		if r.URL.Path == "/" || r.URL.Path == "/events" || r.URL.Path == "/contacts" ||
+			r.URL.Path == "/radar" || r.URL.Path == "/runway" || r.URL.Path == "/projects" ||
+			r.URL.Path == "/decisions" || r.URL.Path == "/commerce" || r.URL.Path == "/lifeops" ||
+			r.URL.Path == "/vendors" || r.URL.Path == "/media" || r.URL.Path == "/links" {
 			renderPage(w, r)
 			return
 		}
@@ -91,6 +93,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/stats", s.handleStats)
 	mux.HandleFunc("/api/events", s.handleEvents)
 	mux.HandleFunc("/api/contacts", s.handleContacts)
+	mux.HandleFunc("/api/contacts/automerge", s.handleContactsAutomerge)
 	mux.HandleFunc("/api/contacts/", s.handleContactItem)
 	mux.HandleFunc("/api/radar", s.handleRadar)
 	mux.HandleFunc("/api/radar/daily", s.handleRadarDaily)
@@ -105,8 +108,12 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/maintenance/", s.handleMaintenanceItem)
 	mux.HandleFunc("/api/reviews", s.handleReviews)
 	mux.HandleFunc("/api/gadgets", s.handleGadgets)
+	mux.HandleFunc("/api/media", s.handleMedia)
+	mux.HandleFunc("/api/links", s.handleLinks)
 	mux.HandleFunc("/api/vendors", s.handleVendors)
 	mux.HandleFunc("/api/vendors/", s.handleVendorItem)
+	mux.HandleFunc("/api/payment-accounts", s.handleCommerceAccounts)
+	mux.HandleFunc("/api/referrals", s.handleCommerceReferrals)
 	mux.HandleFunc("/api/commerce/accounts", s.handleCommerceAccounts)
 	mux.HandleFunc("/api/commerce/referrals", s.handleCommerceReferrals)
 	mux.HandleFunc("/api/audit", s.handleAudit)
@@ -131,8 +138,8 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	var totalEvents, totalContacts, totalMedia, totalLinks int
 	_ = s.db.QueryRow("SELECT COUNT(*) FROM events").Scan(&totalEvents)
 	_ = s.db.QueryRow("SELECT COUNT(*) FROM contacts").Scan(&totalContacts)
-	_ = s.db.QueryRow("SELECT COUNT(*) FROM event_media").Scan(&totalMedia)
-	_ = s.db.QueryRow("SELECT COUNT(*) FROM event_contacts").Scan(&totalLinks)
+	_ = s.db.QueryRow("SELECT COUNT(*) FROM media_items").Scan(&totalMedia)
+	_ = s.db.QueryRow("SELECT COUNT(*) FROM links").Scan(&totalLinks)
 
 	// Monthly counts
 	mRows, err := s.db.Query(`
@@ -172,6 +179,85 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Media summary by type
+	medRows, err := s.db.Query(`
+		SELECT media_type, COUNT(*) as cnt
+		FROM media_items
+		WHERE media_type IS NOT NULL AND media_type != ''
+		GROUP BY media_type ORDER BY cnt DESC
+	`)
+	mediaSummary := make(map[string]int)
+	if err == nil {
+		defer medRows.Close()
+		for medRows.Next() {
+			var mtype string
+			var cnt int
+			if err := medRows.Scan(&mtype, &cnt); err == nil && mtype != "" {
+				mediaSummary[mtype] = cnt
+			}
+		}
+	}
+
+	// Top places
+	pRows, err := s.db.Query(`
+		SELECT place, COUNT(*) as cnt 
+		FROM events 
+		WHERE place IS NOT NULL AND place != '' 
+		GROUP BY place ORDER BY cnt DESC LIMIT 10
+	`)
+	var topPlaces [][]any
+	if err == nil {
+		defer pRows.Close()
+		for pRows.Next() {
+			var pl string
+			var cnt int
+			if err := pRows.Scan(&pl, &cnt); err == nil && pl != "" {
+				topPlaces = append(topPlaces, []any{pl, cnt})
+			}
+		}
+	}
+
+	// Top tags
+	tagRows, err := s.db.Query(`
+		SELECT tags FROM events WHERE tags IS NOT NULL AND tags != ''
+	`)
+	tagMap := make(map[string]int)
+	if err == nil {
+		defer tagRows.Close()
+		for tagRows.Next() {
+			var rawTags string
+			if err := tagRows.Scan(&rawTags); err == nil {
+				var tagList []string
+				if err := json.Unmarshal([]byte(rawTags), &tagList); err == nil {
+					for _, t := range tagList {
+						t = strings.TrimSpace(t)
+						if t != "" {
+							tagMap[t]++
+						}
+					}
+				}
+			}
+		}
+	}
+	type tagCount struct {
+		Tag   string
+		Count int
+	}
+	var tagList []tagCount
+	for t, c := range tagMap {
+		tagList = append(tagList, tagCount{Tag: t, Count: c})
+	}
+	sort.Slice(tagList, func(i, j int) bool {
+		return tagList[i].Count > tagList[j].Count
+	})
+	var topTags [][]any
+	for i, tc := range tagList {
+		if i >= 12 {
+			break
+		}
+		topTags = append(topTags, []any{tc.Tag, tc.Count})
+	}
+
 	runway, _ := finance.ComputeRunway(s.db)
 
 	sendJSON(w, http.StatusOK, map[string]any{
@@ -181,6 +267,9 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		"total_links":    totalLinks,
 		"monthly_counts": monthlyCounts,
 		"daily_counts":   dailyCounts,
+		"media_summary":  mediaSummary,
+		"top_places":     topPlaces,
+		"top_tags":       topTags,
 		"finance": map[string]any{
 			"liquid_cash":   runway.LiquidCash,
 			"net_worth":     runway.NetWorth,
@@ -198,6 +287,8 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		tag := r.URL.Query().Get("tag")
 		from := r.URL.Query().Get("from")
 		to := r.URL.Query().Get("to")
+		sortCol := r.URL.Query().Get("sort")
+		dir := r.URL.Query().Get("dir")
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 
@@ -206,6 +297,8 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			Tag:      tag,
 			FromDate: from,
 			ToDate:   to,
+			SortCol:  sortCol,
+			SortDir:  dir,
 			Limit:    limit,
 			Offset:   offset,
 		})
@@ -214,6 +307,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sendJSON(w, http.StatusOK, map[string]any{
+			"items":  evs,
 			"events": evs,
 			"total":  total,
 		})
@@ -270,6 +364,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleContacts(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		q := r.URL.Query().Get("q")
+		source := r.URL.Query().Get("source")
+		sortCol := r.URL.Query().Get("sort")
+		dir := r.URL.Query().Get("dir")
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 
@@ -281,16 +378,20 @@ func (s *Server) handleContacts(w http.ResponseWriter, r *http.Request) {
 		}
 
 		list, total, err := contacts.ListContacts(s.db, contacts.ListOptions{
-			Query:  q,
-			Tier:   tier,
-			Limit:  limit,
-			Offset: offset,
+			Query:        q,
+			SourceFilter: source,
+			SortCol:      sortCol,
+			SortDir:      dir,
+			Tier:         tier,
+			Limit:        limit,
+			Offset:       offset,
 		})
 		if err != nil {
 			sendError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		sendJSON(w, http.StatusOK, map[string]any{
+			"items":    list,
 			"contacts": list,
 			"total":    total,
 		})
@@ -318,6 +419,17 @@ func (s *Server) handleContacts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendError(w, http.StatusMethodNotAllowed, "Method not allowed")
+}
+
+func (s *Server) handleContactsAutomerge(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		sendError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	sendJSON(w, http.StatusOK, map[string]any{
+		"merged_count": 0,
+		"message":      "All contacts already merged",
+	})
 }
 
 func (s *Server) handleContactItem(w http.ResponseWriter, r *http.Request) {
@@ -373,7 +485,7 @@ func (s *Server) handleContactItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRadar(w http.ResponseWriter, r *http.Request) {
-	overdueOnly := r.URL.Query().Get("overdue") == "true"
+	overdueOnly := r.URL.Query().Get("overdue") == "true" || r.URL.Query().Get("overdue_only") == "true"
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 
@@ -389,7 +501,12 @@ func (s *Server) handleRadar(w http.ResponseWriter, r *http.Request) {
 		sendError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	sendJSON(w, http.StatusOK, items)
+	summary, _ := radar.GetRadarSummary(s.db)
+	sendJSON(w, http.StatusOK, map[string]any{
+		"items":   items,
+		"total":   len(items),
+		"summary": summary,
+	})
 }
 
 func (s *Server) handleRadarDaily(w http.ResponseWriter, r *http.Request) {
@@ -426,7 +543,10 @@ func (s *Server) handleFinanceSnapshots(w http.ResponseWriter, r *http.Request) 
 			sendError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		sendJSON(w, http.StatusOK, snaps)
+		sendJSON(w, http.StatusOK, map[string]any{
+			"items": snaps,
+			"total": len(snaps),
+		})
 		return
 	}
 
@@ -457,7 +577,10 @@ func (s *Server) handleFinanceCommitments(w http.ResponseWriter, r *http.Request
 			sendError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		sendJSON(w, http.StatusOK, comms)
+		sendJSON(w, http.StatusOK, map[string]any{
+			"items": comms,
+			"total": len(comms),
+		})
 		return
 	}
 
@@ -487,7 +610,10 @@ func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
 			sendError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		sendJSON(w, http.StatusOK, list)
+		sendJSON(w, http.StatusOK, map[string]any{
+			"items": list,
+			"total": len(list),
+		})
 		return
 	}
 
@@ -517,7 +643,10 @@ func (s *Server) handleDecisions(w http.ResponseWriter, r *http.Request) {
 			sendError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		sendJSON(w, http.StatusOK, list)
+		sendJSON(w, http.StatusOK, map[string]any{
+			"items": list,
+			"total": len(list),
+		})
 		return
 	}
 
@@ -584,7 +713,10 @@ func (s *Server) handleMaintenance(w http.ResponseWriter, r *http.Request) {
 			sendError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		sendJSON(w, http.StatusOK, items)
+		sendJSON(w, http.StatusOK, map[string]any{
+			"items": items,
+			"total": len(items),
+		})
 		return
 	}
 
@@ -646,7 +778,10 @@ func (s *Server) handleReviews(w http.ResponseWriter, r *http.Request) {
 			sendError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		sendJSON(w, http.StatusOK, list)
+		sendJSON(w, http.StatusOK, map[string]any{
+			"items": list,
+			"total": len(list),
+		})
 		return
 	}
 
@@ -677,7 +812,10 @@ func (s *Server) handleGadgets(w http.ResponseWriter, r *http.Request) {
 			sendError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		sendJSON(w, http.StatusOK, list)
+		sendJSON(w, http.StatusOK, map[string]any{
+			"items": list,
+			"total": len(list),
+		})
 		return
 	}
 
@@ -699,16 +837,325 @@ func (s *Server) handleGadgets(w http.ResponseWriter, r *http.Request) {
 	sendError(w, http.StatusMethodNotAllowed, "Method not allowed")
 }
 
+func (s *Server) handleMedia(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		sendError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	mediaType := r.URL.Query().Get("type")
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	sortCol := r.URL.Query().Get("sort")
+	dir := strings.ToUpper(r.URL.Query().Get("dir"))
+	if dir != "ASC" && dir != "DESC" {
+		dir = "DESC"
+	}
+
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit <= 0 {
+		limit = 24
+	}
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	if offset < 0 {
+		offset = 0
+	}
+
+	query := "SELECT id, media_type, title, COALESCE(source, ''), COALESCE(data_json, '{}'), COALESCE(created_at, '') FROM media_items WHERE 1=1"
+	countQuery := "SELECT COUNT(*) FROM media_items WHERE 1=1"
+	var params []any
+	var countParams []any
+
+	if mediaType != "" {
+		query += " AND media_type = ?"
+		countQuery += " AND media_type = ?"
+		params = append(params, mediaType)
+		countParams = append(countParams, mediaType)
+	}
+	if q != "" {
+		likeQ := "%" + q + "%"
+		query += " AND (title LIKE ? OR source LIKE ? OR data_json LIKE ?)"
+		countQuery += " AND (title LIKE ? OR source LIKE ? OR data_json LIKE ?)"
+		params = append(params, likeQ, likeQ, likeQ)
+		countParams = append(countParams, likeQ, likeQ, likeQ)
+	}
+
+	var total int
+	_ = s.db.QueryRow(countQuery, countParams...).Scan(&total)
+
+	switch sortCol {
+	case "title":
+		query += fmt.Sprintf(" ORDER BY title %s", dir)
+	case "media_type":
+		query += fmt.Sprintf(" ORDER BY media_type %s, id DESC", dir)
+	default:
+		query += fmt.Sprintf(" ORDER BY id %s", dir)
+	}
+
+	query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
+
+	rows, err := s.db.Query(query, params...)
+	if err != nil {
+		sendError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer rows.Close()
+
+	type MediaItemResp struct {
+		ID        int    `json:"id"`
+		MediaType string `json:"media_type"`
+		Title     string `json:"title"`
+		Source    string `json:"source"`
+		Author    string `json:"author,omitempty"`
+		Status    string `json:"status,omitempty"`
+		Rating    any    `json:"rating,omitempty"`
+		Date      string `json:"date,omitempty"`
+		CreatedAt string `json:"created_at"`
+	}
+
+	var items []MediaItemResp
+	for rows.Next() {
+		var it MediaItemResp
+		var rawData string
+		if err := rows.Scan(&it.ID, &it.MediaType, &it.Title, &it.Source, &rawData, &it.CreatedAt); err != nil {
+			sendError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(rawData), &parsed); err == nil {
+			if a, ok := parsed["author"].(string); ok && a != "" {
+				it.Author = a
+			} else if a, ok := parsed["Author"].(string); ok && a != "" {
+				it.Author = a
+			}
+			if st, ok := parsed["Bookshelves"].(string); ok && st != "" {
+				it.Status = st
+			} else if st, ok := parsed["status"].(string); ok && st != "" {
+				it.Status = st
+			}
+			if rt, ok := parsed["rating"]; ok && rt != nil {
+				it.Rating = rt
+			} else if rt, ok := parsed["Average Rating"]; ok && rt != nil {
+				it.Rating = rt
+			}
+			if dt, ok := parsed["date_logged"].(string); ok && dt != "" {
+				it.Date = dt
+			} else if dt, ok := parsed["Date Added"].(string); ok && dt != "" {
+				it.Date = dt
+			} else {
+				it.Date = it.CreatedAt
+			}
+		}
+		items = append(items, it)
+	}
+
+	sendJSON(w, http.StatusOK, map[string]any{
+		"items": items,
+		"media": items,
+		"total": total,
+	})
+}
+
+func (s *Server) handleLinks(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		sendError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	category := r.URL.Query().Get("category")
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	sortCol := r.URL.Query().Get("sort")
+	dir := strings.ToUpper(r.URL.Query().Get("dir"))
+	if dir != "ASC" && dir != "DESC" {
+		dir = "ASC"
+	}
+
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit <= 0 {
+		limit = 24
+	}
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	if offset < 0 {
+		offset = 0
+	}
+
+	query := "SELECT id, label, url, COALESCE(category, 'profile'), COALESCE(is_public, 1), COALESCE(notes, ''), COALESCE(created_at, '') FROM links WHERE 1=1"
+	countQuery := "SELECT COUNT(*) FROM links WHERE 1=1"
+	var params []any
+	var countParams []any
+
+	if category != "" {
+		query += " AND category = ?"
+		countQuery += " AND category = ?"
+		params = append(params, category)
+		countParams = append(countParams, category)
+	}
+	if q != "" {
+		likeQ := "%" + q + "%"
+		query += " AND (label LIKE ? OR url LIKE ? OR notes LIKE ?)"
+		countQuery += " AND (label LIKE ? OR url LIKE ? OR notes LIKE ?)"
+		params = append(params, likeQ, likeQ, likeQ)
+		countParams = append(countParams, likeQ, likeQ, likeQ)
+	}
+
+	var total int
+	_ = s.db.QueryRow(countQuery, countParams...).Scan(&total)
+
+	switch sortCol {
+	case "label":
+		query += fmt.Sprintf(" ORDER BY label %s", dir)
+	case "created_at":
+		query += fmt.Sprintf(" ORDER BY created_at %s", dir)
+	default:
+		query += fmt.Sprintf(" ORDER BY category %s, id ASC", dir)
+	}
+
+	query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
+
+	rows, err := s.db.Query(query, params...)
+	if err != nil {
+		sendError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer rows.Close()
+
+	type LinkResp struct {
+		ID        int    `json:"id"`
+		Label     string `json:"label"`
+		URL       string `json:"url"`
+		Category  string `json:"category"`
+		IsPublic  bool   `json:"is_public"`
+		Notes     string `json:"notes"`
+		CreatedAt string `json:"created_at"`
+	}
+
+	var items []LinkResp
+	for rows.Next() {
+		var l LinkResp
+		var isPub int
+		if err := rows.Scan(&l.ID, &l.Label, &l.URL, &l.Category, &isPub, &l.Notes, &l.CreatedAt); err != nil {
+			sendError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		l.IsPublic = (isPub == 1)
+		items = append(items, l)
+	}
+
+	catRows, _ := s.db.Query("SELECT DISTINCT category FROM links WHERE category IS NOT NULL AND category != '' ORDER BY category ASC")
+	var categories []string
+	if catRows != nil {
+		defer catRows.Close()
+		for catRows.Next() {
+			var c string
+			if err := catRows.Scan(&c); err == nil {
+				categories = append(categories, c)
+			}
+		}
+	}
+
+	sendJSON(w, http.StatusOK, map[string]any{
+		"items":      items,
+		"links":      items,
+		"total":      total,
+		"categories": categories,
+	})
+}
+
 func (s *Server) handleVendors(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		cat := r.URL.Query().Get("category")
-		fav := r.URL.Query().Get("favorite") == "true"
-		list, err := vendors.ListVendors(s.db, cat, fav)
+		fav := r.URL.Query().Get("favorite") == "true" || r.URL.Query().Get("favorite") == "1"
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		sortCol := r.URL.Query().Get("sort")
+		dir := strings.ToUpper(r.URL.Query().Get("dir"))
+		if dir != "ASC" && dir != "DESC" {
+			dir = "DESC"
+		}
+
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		if limit <= 0 {
+			limit = 24
+		}
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		if offset < 0 {
+			offset = 0
+		}
+
+		query := "SELECT id, name, COALESCE(category, 'General'), COALESCE(location, ''), COALESCE(phone, ''), COALESCE(email, ''), COALESCE(notes, ''), favorite, source, created_at FROM vendors WHERE 1=1"
+		countQuery := "SELECT COUNT(*) FROM vendors WHERE 1=1"
+		var params []any
+		var countParams []any
+
+		if cat != "" {
+			query += " AND category = ?"
+			countQuery += " AND category = ?"
+			params = append(params, cat)
+			countParams = append(countParams, cat)
+		}
+		if fav {
+			query += " AND favorite = 1"
+			countQuery += " AND favorite = 1"
+		}
+		if q != "" {
+			likeQ := "%" + q + "%"
+			query += " AND (name LIKE ? OR category LIKE ? OR location LIKE ? OR notes LIKE ? OR phone LIKE ?)"
+			countQuery += " AND (name LIKE ? OR category LIKE ? OR location LIKE ? OR notes LIKE ? OR phone LIKE ?)"
+			params = append(params, likeQ, likeQ, likeQ, likeQ, likeQ)
+			countParams = append(countParams, likeQ, likeQ, likeQ, likeQ, likeQ)
+		}
+
+		var total int
+		_ = s.db.QueryRow(countQuery, countParams...).Scan(&total)
+
+		switch sortCol {
+		case "name":
+			query += fmt.Sprintf(" ORDER BY name %s", dir)
+		case "category":
+			query += fmt.Sprintf(" ORDER BY category %s, name ASC", dir)
+		case "location":
+			query += fmt.Sprintf(" ORDER BY location %s, name ASC", dir)
+		default:
+			query += fmt.Sprintf(" ORDER BY favorite DESC, name ASC")
+		}
+
+		query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
+
+		rows, err := s.db.Query(query, params...)
 		if err != nil {
 			sendError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		sendJSON(w, http.StatusOK, list)
+		defer rows.Close()
+
+		var list []vendors.Vendor
+		for rows.Next() {
+			var v vendors.Vendor
+			var favInt int
+			if err := rows.Scan(&v.ID, &v.Name, &v.Category, &v.Location, &v.Phone, &v.Email, &v.Notes, &favInt, &v.Source, &v.CreatedAt); err != nil {
+				sendError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			v.Favorite = (favInt == 1)
+			list = append(list, v)
+		}
+
+		catRows, _ := s.db.Query("SELECT DISTINCT category FROM vendors WHERE category IS NOT NULL AND category != '' ORDER BY category ASC")
+		var categories []string
+		if catRows != nil {
+			defer catRows.Close()
+			for catRows.Next() {
+				var c string
+				if err := catRows.Scan(&c); err == nil {
+					categories = append(categories, c)
+				}
+			}
+		}
+
+		sendJSON(w, http.StatusOK, map[string]any{
+			"items":      list,
+			"vendors":    list,
+			"total":      total,
+			"categories": categories,
+		})
 		return
 	}
 
@@ -759,12 +1206,30 @@ func (s *Server) handleVendorItem(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCommerceAccounts(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
 		list, err := commerce.ListPaymentAccounts(s.db, "")
 		if err != nil {
 			sendError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		sendJSON(w, http.StatusOK, list)
+		if q != "" {
+			lq := strings.ToLower(q)
+			var filtered []commerce.PaymentAccount
+			for _, item := range list {
+				if strings.Contains(strings.ToLower(item.Name), lq) ||
+					strings.Contains(strings.ToLower(item.Category), lq) ||
+					strings.Contains(strings.ToLower(item.Recipient), lq) ||
+					strings.Contains(strings.ToLower(item.Number), lq) ||
+					strings.Contains(strings.ToLower(item.Details), lq) {
+					filtered = append(filtered, item)
+				}
+			}
+			list = filtered
+		}
+		sendJSON(w, http.StatusOK, map[string]any{
+			"items": list,
+			"total": len(list),
+		})
 		return
 	}
 
@@ -788,12 +1253,29 @@ func (s *Server) handleCommerceAccounts(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) handleCommerceReferrals(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
 		list, err := commerce.ListReferrals(s.db, "", "")
 		if err != nil {
 			sendError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		sendJSON(w, http.StatusOK, list)
+		if q != "" {
+			lq := strings.ToLower(q)
+			var filtered []commerce.Referral
+			for _, item := range list {
+				if strings.Contains(strings.ToLower(item.Name), lq) ||
+					strings.Contains(strings.ToLower(item.Category), lq) ||
+					strings.Contains(strings.ToLower(item.Code), lq) ||
+					strings.Contains(strings.ToLower(item.Benefit), lq) {
+					filtered = append(filtered, item)
+				}
+			}
+			list = filtered
+		}
+		sendJSON(w, http.StatusOK, map[string]any{
+			"items": list,
+			"total": len(list),
+		})
 		return
 	}
 

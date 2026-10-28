@@ -330,7 +330,15 @@
           const rdRes = await fetch('/api/radar');
           if (rdRes.ok) {
             const rd = await rdRes.json();
-            this.stats.radar_overdue = rd.summary ? `${rd.summary.total_overdue} Overdue` : '0';
+            if (rd.summary && typeof rd.summary.total_overdue === 'number') {
+              this.stats.radar_overdue = `${rd.summary.total_overdue} Overdue`;
+            } else if (Array.isArray(rd)) {
+              this.stats.radar_overdue = `${rd.length} Active`;
+            } else if (rd.total) {
+              this.stats.radar_overdue = `${rd.total} Active`;
+            } else {
+              this.stats.radar_overdue = '0';
+            }
           }
         } catch (e) {}
 
@@ -477,7 +485,7 @@
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
 
-        const items = Array.isArray(data) ? data : (data.items || []);
+        const items = Array.isArray(data) ? data : (data.items || data.events || data.contacts || data.media || data.links || data.vendors || data.payments || data.referrals || []);
         const total = (typeof data.total === 'number') ? data.total : (isAppend ? state.items.length + items.length : items.length);
 
         state.total = total;
@@ -666,8 +674,9 @@
         const url = status ? `/api/projects?status=${encodeURIComponent(status)}` : '/api/projects';
         const res = await fetch(url);
         const data = await res.json();
-        this.projects.total = data.total || 0;
-        this.projects.items = data.items || [];
+        const items = Array.isArray(data) ? data : (data.items || []);
+        this.projects.total = (typeof data.total === 'number') ? data.total : items.length;
+        this.projects.items = items;
       } catch (err) {
         console.error('Failed to load projects:', err);
         this.showToast('Failed to load projects');
@@ -684,8 +693,9 @@
         const url = status ? `/api/decisions?status=${encodeURIComponent(status)}` : '/api/decisions';
         const res = await fetch(url);
         const data = await res.json();
-        this.decisions.total = data.total || 0;
-        this.decisions.items = data.items || [];
+        const items = Array.isArray(data) ? data : (data.items || []);
+        this.decisions.total = (typeof data.total === 'number') ? data.total : items.length;
+        this.decisions.items = items;
       } catch (err) {
         console.error('Failed to load decisions:', err);
         this.showToast('Failed to load decisions');
@@ -705,9 +715,10 @@
         if (overdueOnly) url += `&overdue_only=true`;
         const res = await fetch(url);
         const data = await res.json();
-        this.radar.total = data.total || 0;
-        this.radar.summary = data.summary || null;
-        this.radar.items = data.items || [];
+        const items = Array.isArray(data) ? data : (data.items || []);
+        this.radar.total = (typeof data.total === 'number') ? data.total : items.length;
+        this.radar.summary = data.summary || (this.radar.summary || null);
+        this.radar.items = items;
       } catch (err) {
         console.error('Failed to load radar:', err);
         this.showToast('Failed to load radar');
@@ -742,13 +753,13 @@
         const mRes = await fetch('/api/maintenance?limit=10');
         if (mRes.ok) {
           const mData = await mRes.json();
-          this.lifeops.maintenance = mData.items || [];
+          this.lifeops.maintenance = Array.isArray(mData) ? mData : (mData.items || []);
         }
 
         const rRes = await fetch('/api/reviews?limit=5');
         if (rRes.ok) {
           const rData = await rRes.json();
-          this.lifeops.reviews = rData.items || [];
+          this.lifeops.reviews = Array.isArray(rData) ? rData : (rData.items || []);
         }
       } catch (err) {
         console.error('Failed to load life ops:', err);
