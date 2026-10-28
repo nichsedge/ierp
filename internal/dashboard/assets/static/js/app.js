@@ -210,10 +210,36 @@
       reviews: [],
       loading: false
     },
+    places: {
+      items: [],
+      cities: [],
+      selectedCity: '',
+      search: '',
+      loading: false,
+      map: null,
+      markers: []
+    },
+
+    get filteredPlaces() {
+      const p = this.places;
+      let list = p.items || [];
+      if (p.selectedCity) {
+        list = list.filter(item => item.city === p.selectedCity);
+      }
+      if (p.search) {
+        const q = p.search.toLowerCase();
+        list = list.filter(item =>
+          (item.place && item.place.toLowerCase().includes(q)) ||
+          (item.display_name && item.display_name.toLowerCase().includes(q)) ||
+          (item.city && item.city.toLowerCase().includes(q))
+        );
+      }
+      return list;
+    },
 
     // Lifecycle Init
     init() {
-      const VALID_TABS = ['overview', 'events', 'contacts', 'projects', 'decisions', 'radar', 'lifeops', 'media', 'vendors', 'links', 'commerce'];
+      const VALID_TABS = ['overview', 'events', 'contacts', 'projects', 'decisions', 'radar', 'lifeops', 'media', 'vendors', 'links', 'places', 'commerce'];
       const hashTab = window.location.hash ? window.location.hash.replace('#', '') : '';
       const initialTab = VALID_TABS.includes(hashTab) ? hashTab : 'overview';
       this.switchTab(initialTab, false);
@@ -270,6 +296,16 @@
         if (this.radar.items.length === 0) this.loadRadar();
       } else if (tabName === 'lifeops') {
         if (this.lifeops.maintenance.length === 0) this.loadLifeOps();
+      } else if (tabName === 'places') {
+        if (this.places.items.length === 0) {
+          this.loadPlaces();
+        } else {
+          this.$nextTick(() => {
+            if (this.places.map) {
+              this.places.map.invalidateSize();
+            }
+          });
+        }
       }
 
       this.$nextTick(() => {
@@ -770,6 +806,132 @@
 
     getMediaIcon(type) {
       return typeIcons[type] || '📁';
+    },
+
+    // Places Map Methods
+    async loadPlaces() {
+      this.places.loading = true;
+      try {
+        const res = await fetch('/api/places');
+        const data = await res.json();
+        this.places.items = data.items || [];
+        this.places.cities = data.cities || [];
+        this.$nextTick(() => {
+          this.initMap();
+        });
+      } catch (err) {
+        console.error('Failed to load places:', err);
+        this.showToast('Failed to load visited places');
+      } finally {
+        this.places.loading = false;
+      }
+    },
+
+    initMap() {
+      const mapContainer = document.getElementById('places-map');
+      if (!mapContainer || typeof L === 'undefined') return;
+
+      if (this.places.map) {
+        this.places.map.remove();
+        this.places.map = null;
+      }
+
+      // Default center: Indonesia (between Jakarta & Bandung)
+      const map = L.map('places-map').setView([-6.5, 107.0], 8);
+      this.places.map = map;
+
+      // CartoDB Dark Matter tile layer (matches dark theme)
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 19
+      }).addTo(map);
+
+      this.renderMapMarkers();
+    },
+
+    renderMapMarkers() {
+      if (!this.places.map || typeof L === 'undefined') return;
+
+      // Clear existing markers
+      if (this.places.markers && this.places.markers.length > 0) {
+        this.places.markers.forEach(m => m.remove());
+      }
+      this.places.markers = [];
+
+      const bounds = [];
+      const list = this.filteredPlaces;
+
+      list.forEach(p => {
+        if (!p.latitude || !p.longitude) return;
+
+        // Custom neon pinpoint icon
+        const icon = L.divIcon({
+          className: 'custom-pin-marker',
+          html: `<div style="
+            background: linear-gradient(135deg, #00f2fe, #4facfe);
+            width: 26px; height: 26px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            border: 2px solid #ffffff; box-shadow: 0 0 12px rgba(0,242,254,0.8);
+            color: #000; font-size: 12px; font-weight: 700; cursor: pointer;">
+            📍
+          </div>`,
+          iconSize: [26, 26],
+          iconAnchor: [13, 13],
+          popupAnchor: [0, -14]
+        });
+
+        const marker = L.marker([p.latitude, p.longitude], { icon }).addTo(this.places.map);
+
+        let eventsHtml = '';
+        if (p.events && p.events.length > 0) {
+          eventsHtml = '<div style="margin-top:8px; border-top:1px solid rgba(255,255,255,0.1); padding-top:6px; max-height:140px; overflow-y:auto;">';
+          p.events.slice(0, 5).forEach(ev => {
+            eventsHtml += `<div style="font-size:12px; margin-bottom:4px; color:#9ca3af;">
+              <span style="color:#00f2fe;">${ev.start_date ? ev.start_date.substring(0, 10) : ''}</span>: 
+              <strong style="color:#e5e7eb;">${ev.title}</strong>
+            </div>`;
+          });
+          eventsHtml += '</div>';
+        }
+
+        const popupHtml = `
+          <div style="min-width:200px; padding:4px;">
+            <h3 style="margin:0 0 4px 0; color:#fff; font-size:15px;">${p.place}</h3>
+            <div style="font-size:12px; color:#00f2fe;">📍 ${p.city || 'Indonesia'} • <span style="color:#a78bfa;">${p.event_count} visit${p.event_count > 1 ? 's' : ''}</span></div>
+            ${eventsHtml}
+          </div>
+        `;
+
+        marker.bindPopup(popupHtml);
+        marker._placeData = p;
+        this.places.markers.push(marker);
+        bounds.push([p.latitude, p.longitude]);
+      });
+
+      if (bounds.length > 0 && !this.places.selectedCity && !this.places.search) {
+        this.places.map.fitBounds(bounds, { padding: [50, 50] });
+      } else if (bounds.length > 0) {
+        this.places.map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+      }
+    },
+
+    filterPlacesCity(city) {
+      this.places.selectedCity = city;
+      this.renderMapMarkers();
+    },
+
+    onPlacesSearch() {
+      this.renderMapMarkers();
+    },
+
+    focusPlace(place) {
+      if (!this.places.map || !place.latitude || !place.longitude) return;
+      this.places.map.setView([place.latitude, place.longitude], 15, { animate: true });
+      const matched = this.places.markers.find(m => m._placeData && m._placeData.place === place.place);
+      if (matched) {
+        matched.openPopup();
+      }
     },
 
     setupObservers() {

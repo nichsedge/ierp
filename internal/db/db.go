@@ -174,6 +174,16 @@ func InitDB(dbPath string, verbose bool) error {
         updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
 
+    CREATE TABLE IF NOT EXISTS places_cache (
+        place TEXT PRIMARY KEY,
+        display_name TEXT,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        city TEXT,
+        country TEXT,
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+
     CREATE TABLE IF NOT EXISTS payment_accounts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         slug TEXT UNIQUE,
