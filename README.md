@@ -9,6 +9,7 @@ A zero-CGO, offline-first personal operating system, CRM, journal event log syst
 ## ⚡ Key Features
 
 * **Zero-CGO Pure Go & Dual Database Engine**: Built with Go standard library, pure Go SQLite (`modernc.org/sqlite`), and Turso libSQL (`github.com/tursodatabase/libsql-client-go`). Instant startup, portable single binary, zero external runtime dependencies.
+* **Unified Multi-Asset Portfolio Engine (`ierp portfolio`)**: Consolidated directly into `ierp`. Native Go ETL aggregator for Indonesian equities & SBN Sukuk (KSEI), EVM DeFi (DeBank), CEX crypto (Binance), Solana (Alchemy), and cash/P2P lending (SansFinance). Features the Sovereign Runway & Macro Advisor and stdio MCP server for AI coding agents.
 * **Turso (libSQL) Distributed Cloud & Local SQLite Fallback**: Connects directly to serverless Turso over pure Go HTTP when `TURSO_DATABASE_URL` (or `IERP_TURSO_URL`) is defined, eliminating multi-device file syncing rituals. Defaults to local `events.db` with WAL mode when running standalone.
 * **Local SQLite with WAL Mode**: Safe concurrent reads/writes between CLI background syncs and web servers with foreign keys and 5000ms busy timeout.
 * **Sovereignty Runway & Treasury**:

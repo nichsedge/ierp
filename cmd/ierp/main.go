@@ -33,6 +33,11 @@ import (
 )
 
 func main() {
+	if filepath.Base(os.Args[0]) == "portfolio" {
+		portfolio.RunCLI(os.Args[1:])
+		return
+	}
+
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
@@ -138,6 +143,8 @@ func main() {
 		}
 	case "sync-portfolio":
 		handleSyncPortfolio(args)
+	case "portfolio":
+		portfolio.RunCLI(args)
 	case "sync-github", "sync-gh-projects":
 		handleSyncGitHub(args)
 	case "sync":

@@ -10,6 +10,7 @@
 * **Local SQLite with WAL Mode**: All database connections MUST use WAL (`PRAGMA journal_mode = WAL;`), foreign keys enabled (`PRAGMA foreign_keys = ON;`), and busy timeouts (`PRAGMA busy_timeout = 5000;`) to guarantee non-blocking concurrent reads and writes between background tasks and the embedded web dashboard.
 * **Direct Binary Execution**:
   * Run the CLI directly: `ierp <command>` (e.g. `ierp runway`, `ierp radar`, `ierp audit`).
+  * Run the unified portfolio suite: `ierp portfolio [run|advisor|ai-state|fetch|mcp]` or directly via symlinked `portfolio <command>`.
   * Run test suite: `go test -v ./...`.
   * Build binary: `go build -o bin/ierp ./cmd/ierp`.
   * Install to user path: `cp bin/ierp ~/.local/bin/ierp`.
