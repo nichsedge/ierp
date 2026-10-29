@@ -77,7 +77,7 @@ func Export(database *sql.DB, targetDir string) (string, error) {
 	if targetDir == "" {
 		home, err := os.UserHomeDir()
 		if err == nil {
-			targetDir = filepath.Join(home, "Projects", "nichsedge.github.io", "data")
+			targetDir = filepath.Join(home, "Projects", "ierp", "data")
 		} else {
 			targetDir = "data"
 		}

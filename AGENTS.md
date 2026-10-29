@@ -25,7 +25,7 @@ iERP is the **Central Single Source of Truth (SSOT) for Structured Personal ERP 
 * **Downstream Export & Sync Pipelines**:
   * **Digital Graveyard Deep Export**: `ierp export-garden` (or `ierp export garden`) regenerates hardware notes, strategic initiatives, decision journals, and retrospectives in `~/Projects/digital-graveyard`.
   * **Commerce Export**: `ierp export-commerce` (or `ierp export commerce`) regenerates `pay.json` and `referrals.json` in `~/Projects/nichsedge.github.io/data/`.
-  * **Sovereign Transparency Export**: `ierp export-transparency` (or `ierp export transparency`) writes `transparency.json` to `~/Projects/nichsedge.github.io/data/` — privacy-safe percentages and runway metrics only, never absolute amounts.
+  * **Sovereign Transparency Export**: `ierp export-transparency` (or `ierp export transparency`) writes `transparency.json` to `~/Projects/ierp/data/` — privacy-safe percentages and runway metrics for internal review.
   * **GitHub Projects Sync & Export**: `ierp sync gh-projects` ingests GitHub repositories via GraphQL into `events.db`, and `ierp export gh-projects` exports `github_repos_all.json`.
   * **Cloudflare R2 Bidirectional Sync**: `ierp r2 [status|push|pull|auto]` performs atomic SQLite WAL checkpointing and syncs `db/ierp_latest.sqlite` with Cloudflare R2 (`ichsanul-dev`) using pure Go AWS SigV4.
 * **Upstream Intake**:
