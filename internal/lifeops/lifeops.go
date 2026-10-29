@@ -132,7 +132,7 @@ func CompleteMaintenance(database *sql.DB, itemID int, completionDate string, co
 
 	var it MaintenanceItem
 	row := tx.QueryRow(`
-		SELECT id, name, category, due_date, interval_days, cost, notes, gadget_id
+		SELECT id, name, COALESCE(category, 'general'), due_date, interval_days, COALESCE(cost, 0), COALESCE(notes, ''), gadget_id
 		FROM maintenance_items WHERE id = ?
 	`, itemID)
 
