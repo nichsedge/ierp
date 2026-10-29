@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/nichsedge/ierp/internal/audit"
 	"github.com/nichsedge/ierp/internal/commerce"
@@ -249,8 +250,22 @@ func handleInsertEvent(args []string) {
 	_ = fs.Parse(args)
 
 	if *title == "" {
-		fmt.Fprintf(os.Stderr, "%sError: --title is required%s\n", config.Red, config.Reset)
-		os.Exit(1)
+		if len(fs.Args()) > 0 {
+			*title = strings.Join(fs.Args(), " ")
+		} else {
+			fmt.Fprintf(os.Stderr, "%sError: --title is required (or provide title directly)%s\n", config.Red, config.Reset)
+			os.Exit(1)
+		}
+	}
+
+	if *place == "" && strings.Contains(*title, " @ ") {
+		parts := strings.SplitN(*title, " @ ", 2)
+		*title = strings.TrimSpace(parts[0])
+		*place = strings.TrimSpace(parts[1])
+	}
+
+	if *start == "" {
+		*start = time.Now().Format("2006-01-02")
 	}
 
 	database := openDB()

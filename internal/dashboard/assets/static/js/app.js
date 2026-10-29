@@ -33,6 +33,64 @@
       }, duration);
     },
 
+    // New event state
+    newEvent: {
+      show: false,
+      saving: false,
+      title: '',
+      place: '',
+      start_date: new Date().toISOString().slice(0, 10),
+      tags: '',
+      notes: ''
+    },
+    openNewEventModal() {
+      this.newEvent = {
+        show: true,
+        saving: false,
+        title: '',
+        place: '',
+        start_date: new Date().toISOString().slice(0, 10),
+        tags: '',
+        notes: ''
+      };
+    },
+    closeNewEventModal() {
+      this.newEvent.show = false;
+    },
+    async submitNewEvent() {
+      if (!this.newEvent.title.trim()) {
+        this.showToast('Please enter an event title');
+        return;
+      }
+      this.newEvent.saving = true;
+      try {
+        const payload = {
+          title: this.newEvent.title.trim(),
+          place: this.newEvent.place.trim(),
+          start_date: this.newEvent.start_date,
+          tags: this.newEvent.tags.split(',').map(s => s.trim()).filter(Boolean),
+          notes: this.newEvent.notes.trim()
+        };
+        const res = await fetch('/api/events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to save event');
+        }
+        this.showToast('Event created successfully');
+        this.closeNewEventModal();
+        this.resetAndFetch('events');
+        this.loadStats();
+      } catch (e) {
+        this.showToast('Error: ' + e.message);
+      } finally {
+        this.newEvent.saving = false;
+      }
+    },
+
     // Modal state
     modalEvent: null,
     async showEventModal(eventId) {

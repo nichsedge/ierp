@@ -16,6 +16,8 @@ func TestConfigEnvOverrides(t *testing.T) {
 	fakeDB := filepath.Join(tempDir, "custom_events.db")
 	fakeMedia := filepath.Join(tempDir, "custom_media")
 
+	t.Setenv("TURSO_DATABASE_URL", "")
+	t.Setenv("IERP_TURSO_URL", "")
 	t.Setenv("IERP_DB", fakeDB)
 	t.Setenv("IERP_MEDIA_DIR", fakeMedia)
 
