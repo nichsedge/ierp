@@ -21,7 +21,11 @@ func DBPath() string {
 	if u := TursoURL(); u != "" {
 		return u
 	}
+	return LocalDBPath()
+}
 
+// LocalDBPath returns the local SQLite database file path, ignoring TursoURL.
+func LocalDBPath() string {
 	if p := os.Getenv("IERP_DB"); p != "" {
 		abs, err := filepath.Abs(p)
 		if err == nil {

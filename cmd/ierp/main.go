@@ -1561,7 +1561,7 @@ func handleR2(args []string) {
 		os.Exit(1)
 	}
 
-	dbPath := config.DBPath()
+	dbPath := config.LocalDBPath()
 	ctx := context.Background()
 
 	switch subcmd {
