@@ -29,7 +29,7 @@ iERP is the **Central Single Source of Truth (SSOT) for Structured Personal ERP 
   * **GitHub Projects Sync & Export**: `ierp sync gh-projects` ingests GitHub repositories via GraphQL into `events.db`, and `ierp export gh-projects` exports `github_repos_all.json`.
   * **Cloudflare R2 Bidirectional Sync**: `ierp r2 [status|push|pull|auto]` performs atomic SQLite WAL checkpointing and syncs `db/ierp_latest.sqlite` with Cloudflare R2 (`ichsanul-dev`) using pure Go AWS SigV4.
 * **Upstream Intake**:
-  * **Portfolio Snapshots**: `ierp sync portfolio` reads `portfolio-integration/data/latest_snapshot.json`, inserts `networth_snapshots`, and calculates sovereign runway.
+  * **Portfolio Snapshots**: `ierp sync portfolio` reads `ierp/data/portfolio/latest_snapshot.json`, inserts `networth_snapshots`, and calculates sovereign runway.
   * **Commitments & Burn**: Fixed monthly commitments feed `ierp insert-commitment` for runway calculations.
 * **Balance Sheet Snapshot Workflow**:
   * `ierp insert-snapshot` records a new balance sheet; `ierp update-snapshot --id N` corrects one in place; `ierp delete-snapshot --id N` voids one.

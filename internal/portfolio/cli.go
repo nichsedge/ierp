@@ -31,7 +31,7 @@ func loadEnv() {
 	_ = godotenv.Load()
 	home, err := os.UserHomeDir()
 	if err == nil {
-		_ = godotenv.Load(filepath.Join(home, ".secrets"))
+		_ = godotenv.Overload(filepath.Join(home, ".secrets"))
 		_ = godotenv.Load(filepath.Join(home, ".env"))
 	}
 	dir, err := os.Getwd()
@@ -66,11 +66,25 @@ func getDataDir() string {
 		if err == nil && strings.HasPrefix(d, "/home/al") && !dirExists(d) {
 			d = filepath.Join(home, strings.TrimPrefix(d, "/home/al"))
 		}
-		return d
+		if dirExists(d) {
+			return d
+		}
+	}
+	// Fallback to ~/Projects/ierp/data/portfolio
+	home, err := os.UserHomeDir()
+	if err == nil {
+		target := filepath.Join(home, "Projects", "ierp", "data", "portfolio")
+		if dirExists(target) {
+			return target
+		}
 	}
 	// Fallback to local data/
 	dir, err := os.Getwd()
 	if err == nil {
+		localPortfolio := filepath.Join(dir, "data", "portfolio")
+		if dirExists(localPortfolio) {
+			return localPortfolio
+		}
 		localData := filepath.Join(dir, "data")
 		if dirExists(localData) {
 			return localData

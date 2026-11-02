@@ -32,9 +32,18 @@ type SnapshotPayload struct {
 
 // SyncPortfolio ingests the latest portfolio snapshot into events.db.
 func SyncPortfolio(db *sql.DB, portfolioDataDir string, force bool) error {
+	if portfolioDataDir != "" && !dirExists(portfolioDataDir) {
+		portfolioDataDir = ""
+	}
+	if portfolioDataDir == "" {
+		portfolioDataDir = os.Getenv("PORTFOLIO_DATA_DIR")
+		if !dirExists(portfolioDataDir) {
+			portfolioDataDir = ""
+		}
+	}
 	if portfolioDataDir == "" {
 		home, _ := os.UserHomeDir()
-		portfolioDataDir = filepath.Join(home, "Projects", "portfolio-integration", "data")
+		portfolioDataDir = filepath.Join(home, "Projects", "ierp", "data", "portfolio")
 	}
 
 	latestFile := filepath.Join(portfolioDataDir, "latest_snapshot.json")
@@ -109,7 +118,7 @@ func SyncPortfolio(db *sql.DB, portfolioDataDir string, force bool) error {
 			HardAssets:   0,
 			Liabilities:  liabilities,
 			Currency:     "IDR",
-			Notes:        "Automated SSOT sync from portfolio-integration (Go)",
+			Notes:        "Automated SSOT sync from ierp portfolio (Go)",
 		}
 		id, err := finance.InsertSnapshot(db, snap)
 		if err != nil {
