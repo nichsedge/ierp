@@ -195,6 +195,39 @@ def save_to_turso(record: dict) -> bool:
 
 class RequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == "/renew-watch":
+            service = get_gmail_service()
+            if not service:
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Failed to init Gmail service"}).encode("utf-8"))
+                return
+
+            try:
+                topic_name = f"projects/{os.environ.get('GCP_PROJECT', 'ichsanul-dev')}/topics/gmail-expenses"
+                request_body = {
+                    "topicName": topic_name,
+                    "labelIds": ["INBOX"]
+                }
+                res = service.users().watch(userId="me", body=request_body).execute()
+                print(f"[RENEWAL] Watch renewed successfully! HistoryId: {res.get('historyId')}, Expiration: {res.get('expiration')}")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "status": "renewed",
+                    "historyId": res.get("historyId"),
+                    "expiration": res.get("expiration")
+                }).encode("utf-8"))
+            except Exception as e:
+                print(f"[RENEWAL ERROR] {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
+            return
+
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
