@@ -43,6 +43,7 @@ ierp/google_credentials.json
 ierp/google_token.json
 scripts/gmail_expenses/credentials.json
 scripts/gmail_expenses/token.json
+scripts/gmail_expenses/.gmail_token.json
 *.env
 *.key
 *.pem

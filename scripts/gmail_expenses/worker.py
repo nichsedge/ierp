@@ -4,13 +4,14 @@
 #     "google-cloud-pubsub>=2.30.0",
 #     "google-api-python-client>=2.150.0",
 #     "google-auth>=2.36.0",
-#     "google-auth-httplib2>=0.2.0",
 #     "requests>=2.32.0",
 # ]
 # ///
 """
-Gmail Expense Tracker - Pub/Sub Worker Listener.
-Uses Application Default Credentials (ADC) - No credentials.json required!
+Gmail Expense Tracker - Pub/Sub Worker Listener with Gemini AI Extraction.
+Subscribes to Cloud Pub/Sub, fetches incoming receipt emails via Gmail API,
+extracts transaction details using Gemini AI (with heuristic fallback),
+and commits them to Turso Cloud (table: email_expenses).
 """
 
 import os
@@ -21,7 +22,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from google.cloud import pubsub_v1
-import google.auth
+from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 import requests
@@ -32,24 +33,26 @@ SUBSCRIPTION_PATH = f"projects/{PROJECT_ID}/subscriptions/{SUBSCRIPTION_NAME}"
 
 TURSO_URL = os.environ.get("TURSO_DATABASE_URL", "").replace("libsql://", "https://")
 TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 
-SCOPES = [
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/cloud-platform",
-]
+SCRIPT_DIR = Path(__file__).resolve().parent
+TOKEN_FILE = SCRIPT_DIR / ".gmail_token.json"
+SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
 _GMAIL_SERVICE = None
 
 def get_gmail_service():
     global _GMAIL_SERVICE
-    if _GMAIL_SERVICE is None:
+    if _GMAIL_SERVICE is None and TOKEN_FILE.exists():
         try:
-            creds, _ = google.auth.default(scopes=SCOPES)
-            if not creds.valid:
+            creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
+            if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
+                with open(TOKEN_FILE, "w", encoding="utf-8") as f:
+                    f.write(creds.to_json())
             _GMAIL_SERVICE = build("gmail", "v1", credentials=creds)
         except Exception as e:
-            print(f"[WARN] Could not initialize Gmail service: {e}")
+            print(f"[WARN] Failed to load Gmail service from token: {e}")
     return _GMAIL_SERVICE
 
 def save_to_turso(record: dict) -> bool:
@@ -105,8 +108,44 @@ def save_to_turso(record: dict) -> bool:
         print(f"❌ Failed to reach Turso: {e}")
         return False
 
-def parse_expense_snippet(text: str, subject: str = "", sender: str = "") -> dict:
-    """Extracts amount and merchant heuristic from receipt text/subject."""
+def parse_with_gemini(text: str, subject: str = "", sender: str = "") -> dict | None:
+    """Uses Gemini 2.5 Flash to extract structured expense details from email content."""
+    if not GEMINI_API_KEY:
+        return None
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    prompt = f"""
+You are an expert expense parser. Extract the transaction receipt details from this email into JSON.
+Sender: {sender}
+Subject: {subject}
+Content: {text}
+
+Respond ONLY with a JSON object in this format (no markdown, no quotes):
+{{
+  "amount": <number, 0 if not an expense>,
+  "currency": "IDR",
+  "merchant": "<merchant/vendor name>",
+  "category": "<Food & Beverage|Transportation|Shopping|Bills & Utilities|Entertainment|General>",
+  "payment_method": "<GoPay|ShopeePay|BCA|Mandiri|Jenius|Bank Jago|Credit Card|Other>"
+}}
+"""
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"}
+    }
+
+    try:
+        r = requests.post(url, json=payload, timeout=10)
+        if r.status_code == 200:
+            res = r.json()
+            raw_json = res["candidates"][0]["content"]["parts"][0]["text"]
+            return json.loads(raw_json)
+    except Exception as e:
+        print(f"[WARN] Gemini extraction failed, falling back to heuristic: {e}")
+    return None
+
+def parse_expense_heuristic(text: str, subject: str = "", sender: str = "") -> dict:
+    """Regex & keyword fallback when AI is not configured."""
     amount = 0.0
     currency = "IDR"
     
@@ -118,14 +157,12 @@ def parse_expense_snippet(text: str, subject: str = "", sender: str = "") -> dic
         except ValueError:
             amount = 0.0
 
-    # Merchant heuristic
     merchant = "Unknown"
     for brand in ["GoPay", "ShopeePay", "Shopee", "Tokopedia", "Grab", "Gojek", "BCA", "Mandiri", "Jenius", "Bank Jago", "Steam", "Spotify", "Netflix", "Google Play"]:
         if brand.lower() in (sender + " " + subject + " " + text).lower():
             merchant = brand
             break
 
-    # Category heuristic
     category = "General"
     combined = (subject + " " + text).lower()
     if any(k in combined for k in ["kopi", "makan", "resto", "food", "kitchen", "cafe"]):
@@ -145,6 +182,13 @@ def parse_expense_snippet(text: str, subject: str = "", sender: str = "") -> dic
         "payment_method": merchant if merchant in ["GoPay", "ShopeePay", "BCA", "Jenius", "Bank Jago"] else "Electronic",
     }
 
+def extract_expense(text: str, subject: str = "", sender: str = "") -> dict:
+    """Tries Gemini first, falls back to heuristic."""
+    data = parse_with_gemini(text, subject, sender)
+    if data and "amount" in data:
+        return data
+    return parse_expense_heuristic(text, subject, sender)
+
 def process_message(message: pubsub_v1.subscriber.message.Message):
     """Callback invoked by Pub/Sub subscriber when a message arrives."""
     try:
@@ -154,7 +198,7 @@ def process_message(message: pubsub_v1.subscriber.message.Message):
 
         if "mock_expense" in data:
             item = data["mock_expense"]
-            parsed = parse_expense_snippet(item.get("snippet", ""), item.get("subject", ""), item.get("sender", ""))
+            parsed = extract_expense(item.get("snippet", ""), item.get("subject", ""), item.get("sender", ""))
             record = {
                 "id": f"mock-{message.message_id}",
                 "source": "mock_pubsub",
@@ -173,7 +217,6 @@ def process_message(message: pubsub_v1.subscriber.message.Message):
         elif "emailAddress" in data and "historyId" in data:
             print(f"🔔 Gmail Watch Notification for {data['emailAddress']} (historyId: {data['historyId']})")
             
-            # Fetch message details if Gmail API service is authenticated
             service = get_gmail_service()
             if service:
                 try:
@@ -194,42 +237,30 @@ def process_message(message: pubsub_v1.subscriber.message.Message):
                         sender = headers.get("from", "")
                         snippet = full_msg.get("snippet", "")
                         
-                        parsed = parse_expense_snippet(snippet, subject, sender)
-                        record = {
-                            "id": f"gmail-{msg['id']}",
-                            "source": "gmail",
-                            "message_id": msg["id"],
-                            "sender": sender,
-                            "subject": subject,
-                            "received_at": datetime.now(timezone.utc).isoformat(),
-                            "amount": parsed["amount"],
-                            "currency": parsed["currency"],
-                            "merchant": parsed["merchant"],
-                            "category": parsed["category"],
-                            "payment_method": parsed["payment_method"],
-                            "raw_snippet": snippet
-                        }
-                        save_to_turso(record)
+                        print(f"🔍 Analyzing email with AI: '{subject}' from {sender}")
+                        parsed = extract_expense(snippet, subject, sender)
+                        if parsed.get("amount", 0) > 0:
+                            record = {
+                                "id": f"gmail-{msg['id']}",
+                                "source": "gmail",
+                                "message_id": msg["id"],
+                                "sender": sender,
+                                "subject": subject,
+                                "received_at": datetime.now(timezone.utc).isoformat(),
+                                "amount": parsed["amount"],
+                                "currency": parsed["currency"],
+                                "merchant": parsed["merchant"],
+                                "category": parsed["category"],
+                                "payment_method": parsed["payment_method"],
+                                "raw_snippet": snippet
+                            }
+                            save_to_turso(record)
+                        else:
+                            print(f"⏩ Skipped (not an expense receipt): {subject}")
                 except Exception as gerr:
                     print(f"⚠️ Error fetching Gmail history: {gerr}")
             else:
-                record = {
-                    "id": f"gmail-{data['historyId']}",
-                    "source": "gmail_push",
-                    "message_id": f"history-{data['historyId']}",
-                    "sender": data["emailAddress"],
-                    "subject": f"Gmail Inbox Update (History: {data['historyId']})",
-                    "received_at": datetime.now(timezone.utc).isoformat(),
-                    "amount": 0.0,
-                    "currency": "IDR",
-                    "merchant": "Gmail Push",
-                    "category": "Notification",
-                    "payment_method": "Pub/Sub",
-                    "raw_snippet": json.dumps(data)
-                }
-                save_to_turso(record)
-        else:
-            print(f"ℹ️ Unhandled payload format: {data}")
+                print(f"⚠️ Gmail service not initialized. Run watch.py first to authorize.")
 
         message.ack()
         print(f"✔️ Message {message.message_id} ACKed successfully.")
@@ -238,8 +269,10 @@ def process_message(message: pubsub_v1.subscriber.message.Message):
         message.nack()
 
 def main():
-    print(f"🚀 Starting Gmail Expense Pub/Sub Listener (ADC Mode)...")
+    ai_status = "Gemini AI Enabled 🧠" if GEMINI_API_KEY else "Heuristic Fallback (Set GEMINI_API_KEY for AI)"
+    print(f"🚀 Starting Gmail Expense Pub/Sub Listener...")
     print(f"📌 Subscription: {SUBSCRIPTION_PATH}")
+    print(f"🤖 Parser Engine: {ai_status}")
     print(f"🗄️ Turso Database: {TURSO_URL or 'Local Mock'}")
 
     subscriber = pubsub_v1.SubscriberClient()
