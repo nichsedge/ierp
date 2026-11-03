@@ -3,16 +3,14 @@
 # dependencies = [
 #     "google-cloud-pubsub>=2.30.0",
 #     "google-api-python-client>=2.150.0",
-#     "google-auth-oauthlib>=1.2.0",
+#     "google-auth>=2.36.0",
 #     "google-auth-httplib2>=0.2.0",
 #     "requests>=2.32.0",
 # ]
 # ///
 """
 Gmail Expense Tracker - Pub/Sub Worker Listener.
-Subscribes to Cloud Pub/Sub topic notifications from Gmail watch,
-fetches incoming receipt emails, extracts transaction details,
-and commits them to Turso Cloud (table: email_expenses).
+Uses Application Default Credentials (ADC) - No credentials.json required!
 """
 
 import os
@@ -23,6 +21,9 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from google.cloud import pubsub_v1
+import google.auth
+from google.auth.transport.requests import Request
+from googleapiclient.discovery import build
 import requests
 
 PROJECT_ID = os.environ.get("GCP_PROJECT", "ichsanul-dev")
@@ -32,13 +33,24 @@ SUBSCRIPTION_PATH = f"projects/{PROJECT_ID}/subscriptions/{SUBSCRIPTION_NAME}"
 TURSO_URL = os.environ.get("TURSO_DATABASE_URL", "").replace("libsql://", "https://")
 TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "")
 
-# Common receipt keywords to filter noise
-EXPENSE_KEYWORDS = [
-    "receipt", "pembayaran", "transaksi", "transfer", "invoice", "order",
-    "gopay", "shopeepay", "ovo", "dana", "bca", "mandiri", "jenius", "jago",
-    "tokopedia", "shopee", "grab", "gojek", "tiket.com", "traveloka", "steam",
-    "payment", "sukses", "berhasil"
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/cloud-platform",
 ]
+
+_GMAIL_SERVICE = None
+
+def get_gmail_service():
+    global _GMAIL_SERVICE
+    if _GMAIL_SERVICE is None:
+        try:
+            creds, _ = google.auth.default(scopes=SCOPES)
+            if not creds.valid:
+                creds.refresh(Request())
+            _GMAIL_SERVICE = build("gmail", "v1", credentials=creds)
+        except Exception as e:
+            print(f"[WARN] Could not initialize Gmail service: {e}")
+    return _GMAIL_SERVICE
 
 def save_to_turso(record: dict) -> bool:
     """Inserts an expense record into the dedicated email_expenses table in Turso."""
@@ -140,7 +152,6 @@ def process_message(message: pubsub_v1.subscriber.message.Message):
         print(f"\n📩 [Pub/Sub Event Received] ID: {message.message_id}")
         data = json.loads(raw_data)
 
-        # Check if this is a direct mock test or a Gmail watch event
         if "mock_expense" in data:
             item = data["mock_expense"]
             parsed = parse_expense_snippet(item.get("snippet", ""), item.get("subject", ""), item.get("sender", ""))
@@ -161,26 +172,65 @@ def process_message(message: pubsub_v1.subscriber.message.Message):
             save_to_turso(record)
         elif "emailAddress" in data and "historyId" in data:
             print(f"🔔 Gmail Watch Notification for {data['emailAddress']} (historyId: {data['historyId']})")
-            record = {
-                "id": f"gmail-{data['historyId']}",
-                "source": "gmail_push",
-                "message_id": f"history-{data['historyId']}",
-                "sender": data["emailAddress"],
-                "subject": f"Gmail Inbox Update (History: {data['historyId']})",
-                "received_at": datetime.now(timezone.utc).isoformat(),
-                "amount": 0.0,
-                "currency": "IDR",
-                "merchant": "Gmail Push",
-                "category": "Notification",
-                "payment_method": "Pub/Sub",
-                "raw_snippet": json.dumps(data)
-            }
-            print(f"ℹ️ Received inbox signal from {data['emailAddress']}. Ready to pull messages.")
-            save_to_turso(record)
+            
+            # Fetch message details if Gmail API service is authenticated
+            service = get_gmail_service()
+            if service:
+                try:
+                    history = service.users().history().list(
+                        userId="me", startHistoryId=data["historyId"], historyTypes=["messageAdded"]
+                    ).execute()
+                    
+                    messages = []
+                    for record_hist in history.get("history", []):
+                        for msg_added in record_hist.get("messagesAdded", []):
+                            messages.append(msg_added["message"])
+                    
+                    print(f"📬 Found {len(messages)} new message(s) in inbox history.")
+                    for msg in messages:
+                        full_msg = service.users().messages().get(userId="me", id=msg["id"], format="snippet").execute()
+                        headers = {h["name"].lower(): h["value"] for h in full_msg.get("payload", {}).get("headers", [])}
+                        subject = headers.get("subject", "")
+                        sender = headers.get("from", "")
+                        snippet = full_msg.get("snippet", "")
+                        
+                        parsed = parse_expense_snippet(snippet, subject, sender)
+                        record = {
+                            "id": f"gmail-{msg['id']}",
+                            "source": "gmail",
+                            "message_id": msg["id"],
+                            "sender": sender,
+                            "subject": subject,
+                            "received_at": datetime.now(timezone.utc).isoformat(),
+                            "amount": parsed["amount"],
+                            "currency": parsed["currency"],
+                            "merchant": parsed["merchant"],
+                            "category": parsed["category"],
+                            "payment_method": parsed["payment_method"],
+                            "raw_snippet": snippet
+                        }
+                        save_to_turso(record)
+                except Exception as gerr:
+                    print(f"⚠️ Error fetching Gmail history: {gerr}")
+            else:
+                record = {
+                    "id": f"gmail-{data['historyId']}",
+                    "source": "gmail_push",
+                    "message_id": f"history-{data['historyId']}",
+                    "sender": data["emailAddress"],
+                    "subject": f"Gmail Inbox Update (History: {data['historyId']})",
+                    "received_at": datetime.now(timezone.utc).isoformat(),
+                    "amount": 0.0,
+                    "currency": "IDR",
+                    "merchant": "Gmail Push",
+                    "category": "Notification",
+                    "payment_method": "Pub/Sub",
+                    "raw_snippet": json.dumps(data)
+                }
+                save_to_turso(record)
         else:
             print(f"ℹ️ Unhandled payload format: {data}")
 
-        # Acknowledge the message so Pub/Sub marks it done
         message.ack()
         print(f"✔️ Message {message.message_id} ACKed successfully.")
     except Exception as err:
@@ -188,7 +238,7 @@ def process_message(message: pubsub_v1.subscriber.message.Message):
         message.nack()
 
 def main():
-    print(f"🚀 Starting Gmail Expense Pub/Sub Listener...")
+    print(f"🚀 Starting Gmail Expense Pub/Sub Listener (ADC Mode)...")
     print(f"📌 Subscription: {SUBSCRIPTION_PATH}")
     print(f"🗄️ Turso Database: {TURSO_URL or 'Local Mock'}")
 

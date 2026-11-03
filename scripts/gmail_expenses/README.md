@@ -17,47 +17,32 @@ Gmail Inbox ──(push notification)──► Cloud Pub/Sub Topic (`gmail-expen
                                    Turso Cloud: `email_expenses` table
 ```
 
-## 🗄️ Database Schema
+## 🔐 Zero-JSON Authentication (1-Click Desktop OAuth)
 
-Data is isolated in its own dedicated table in Turso Cloud (`events.db`), preventing interference with existing ERP models:
+Tidak perlu download file `credentials.json` atau repot copy-paste JSON dari GCP Console. Cukup login sekali di browser menggunakan Google Application Default Credentials (ADC):
 
-```sql
-CREATE TABLE IF NOT EXISTS email_expenses (
-    id TEXT PRIMARY KEY,
-    source TEXT DEFAULT 'gmail',
-    message_id TEXT UNIQUE,
-    sender TEXT,
-    subject TEXT,
-    received_at TEXT,
-    amount REAL,
-    currency TEXT DEFAULT 'IDR',
-    merchant TEXT,
-    category TEXT,
-    payment_method TEXT,
-    raw_snippet TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
+```bash
+gcloud auth application-default login --scopes='https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/gmail.readonly'
 ```
+
+Browser akan terbuka otomatis, pilih akun Google kamu (`muhammad.ichsanul19@gmail.com`), klik **Allow**. Semua token OAuth otomatis tersimpan di sistem.
 
 ## 🚀 Running the Pipeline
 
-### 1. Test Pipeline End-to-End (Simulation)
-Publish a test event to Cloud Pub/Sub:
+### 1. Aktifkan Gmail Watch
+Daftarkan webhook inbox Gmail kamu ke Cloud Pub/Sub:
 ```bash
-uv run ~/Projects/ierp/scripts/gmail_expenses/test_pipeline.py
+uv run ~/Projects/ierp/scripts/gmail_expenses/watch.py
 ```
 
-### 2. Run the Worker Listener
-Start the worker to pull messages from Pub/Sub, parse receipts, and write to Turso:
+### 2. Jalankan Listener Worker
+Tarik notifikasi secara real-time dan simpan struk ke Turso:
 ```bash
 uv run ~/Projects/ierp/scripts/gmail_expenses/worker.py
 ```
 
-### 3. Connect Real Gmail Inbox
-1. Download OAuth 2.0 Client credentials (`credentials.json`) from GCP Console (APIs & Services > Credentials > Desktop App).
-2. Save to `~/Projects/ierp/scripts/gmail_expenses/credentials.json`.
-3. Activate watch:
+### 3. Test Mock Pipeline (Simulasi)
+Untuk menguji coba tanpa menunggu email sungguhan:
 ```bash
-uv run ~/Projects/ierp/scripts/gmail_expenses/watch.py
+uv run ~/Projects/ierp/scripts/gmail_expenses/test_pipeline.py
 ```
-*(Note: Gmail watch expires after 7 days; schedule `watch.py` weekly via cron).*
