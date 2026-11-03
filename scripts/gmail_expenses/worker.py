@@ -228,8 +228,16 @@ def process_message(message: pubsub_v1.subscriber.message.Message):
                     for record_hist in history.get("history", []):
                         for msg_added in record_hist.get("messagesAdded", []):
                             messages.append(msg_added["message"])
+
+                    # Gmail API caveat: data["historyId"] in Pub/Sub is the latest mailbox historyId,
+                    # so users().history().list(startHistoryId=...) returns 0 messages after it.
+                    # Fall back to inspecting recent messages so we never miss the triggering receipt!
+                    if not messages:
+                        print(f"ℹ️ History was empty for historyId {data['historyId']}. Falling back to recent messages...")
+                        recent = service.users().messages().list(userId="me", maxResults=5).execute()
+                        messages = recent.get("messages", [])
                     
-                    print(f"📬 Found {len(messages)} new message(s) in inbox history.")
+                    print(f"📬 Found {len(messages)} message(s) to process.")
                     for msg in messages:
                         full_msg = service.users().messages().get(userId="me", id=msg["id"], format="snippet").execute()
                         headers = {h["name"].lower(): h["value"] for h in full_msg.get("payload", {}).get("headers", [])}

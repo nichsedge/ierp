@@ -258,7 +258,15 @@ class RequestHandler(BaseHTTPRequestHandler):
                                 for msg_added in record_hist.get("messagesAdded", []):
                                     messages.append(msg_added["message"])
 
-                            print(f"📬 Processing {len(messages)} new message(s) from history.")
+                            # Gmail API caveat: data["historyId"] in Pub/Sub is the latest mailbox historyId,
+                            # so users().history().list(startHistoryId=...) returns 0 messages after it.
+                            # Fall back to inspecting recent messages so we never miss the triggering receipt!
+                            if not messages:
+                                print(f"ℹ️ History was empty for historyId {data['historyId']}. Falling back to recent messages...")
+                                recent = service.users().messages().list(userId="me", maxResults=5).execute()
+                                messages = recent.get("messages", [])
+
+                            print(f"📬 Processing {len(messages)} new message(s).")
                             for msg in messages:
                                 full_msg = service.users().messages().get(userId="me", id=msg["id"], format="full").execute()
                                 payload = full_msg.get("payload", {})
