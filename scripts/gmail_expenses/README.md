@@ -8,10 +8,11 @@ Real-time, zero-cost expense tracking pipeline connecting Gmail Push Notificatio
 Gmail Inbox ──(push notification)──► Cloud Pub/Sub Topic (`gmail-expenses`)
                                               │
                                               ▼
-                                 Pub/Sub Subscription (`gmail-expenses-sub`)
+                             Push Subscription (`gmail-expenses-push-sub`)
                                               │
                                               ▼
-                                       `worker.py` (Local/Cloud Run)
+                             Cloud Run (`gmail-expenses-worker` in us-central1)
+                                   (Scale-to-Zero, 100% Free Tier)
                                               │
                                               ▼
                                    Turso Cloud: `email_expenses` table
