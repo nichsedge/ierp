@@ -78,6 +78,7 @@ Code in `internal/` is organized by bounded domain services:
 * **Atomic Life Operations**: Life ops and maintenance auto-rescheduling must execute within a single database transaction (`tx.Begin()`), validating date formats upfront before any mutation.
 * **FTS5 Full-Text Search Virtual Table**: The `events_fts` external content virtual table indexes timeline events and notes in real-time using automatic SQLite triggers (`events_ai`, `events_ad`, `events_au`) and provides BM25 relevance ranking (`bm25(events_fts)`).
 * **Pure Standard Library Garden Generation**: All markdown notes and YAML frontmatter exports to the Digital Garden must remain standard library string formatting without external template or frontmatter dependencies.
+* **Isolated Cloud Expenses Ingestion**: Real-time incoming email receipt telemetry is ingested into the dedicated `email_expenses` table in Turso Cloud (`events.db`), maintaining clean isolation from core journal and transaction tables. Scripts live in `scripts/gmail_expenses/`.
 
 ---
 

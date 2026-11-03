@@ -139,6 +139,13 @@ ierp dashboard --port 8921
 
 ---
 
+## 📬 Real-Time Gmail Expense Pipeline (`scripts/gmail_expenses`)
+- **`watch.py`**: Activates Gmail push notifications to Cloud Pub/Sub topic `gmail-expenses`.
+- **`worker.py`**: Background worker listener pulling notifications and storing parsed expenses in dedicated Turso table `email_expenses`.
+- **`test_pipeline.py`**: Mock event publisher for testing pipeline end-to-end.
+
+---
+
 ## 🧪 Testing
 
 ```bash
