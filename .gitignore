@@ -41,6 +41,8 @@ ierp/events_media/
 ierp/geocode_cache.json
 ierp/google_credentials.json
 ierp/google_token.json
+scripts/gmail_expenses/credentials.json
+scripts/gmail_expenses/token.json
 *.env
 *.key
 *.pem
