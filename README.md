@@ -142,7 +142,8 @@ ierp dashboard --port 8921
 | `ierp sync portfolio` | Ingest multi-asset portfolio snapshot & update sovereign runway (`--force` to override deviation guard). |
 | `ierp sync gh-projects` | Ingest GitHub repositories via GraphQL API into SQLite `events.db`. |
 | `ierp export gh-projects` | Export all repositories to `nichsedge.github.io/data/github_repos_all.json`. |
-| `ierp r2 [status\|push\|pull\|auto]` | Bidirectional Cloudflare R2 synchronization with pure Go AWS SigV4 & WAL checkpointing. |
+| `ierp export check [--fix]` | Downstream Export Guardrail: validate freshness of `pay.json`, `referrals.json`, `github_repos_all.json` against database. |
+| `ierp r2 [status\|push\|pull\|auto]` | Cold archive Cloudflare R2 synchronization (Tier 1 SSOT remains on Turso libSQL Cloud). |
 | `ierp dashboard` | Launch zero-dependency embedded web dashboard server (`--port`, `--host`). |
 
 ---

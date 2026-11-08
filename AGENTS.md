@@ -27,7 +27,8 @@ iERP is the **Central Single Source of Truth (SSOT) for Structured Personal ERP 
   * **Commerce Export**: `ierp export-commerce` (or `ierp export commerce`) regenerates `pay.json` and `referrals.json` in `~/Projects/nichsedge.github.io/data/`.
   * **Sovereign Transparency Export**: `ierp export-transparency` (or `ierp export transparency`) writes `transparency.json` to `~/Projects/ierp/data/` — privacy-safe percentages and runway metrics for internal review.
   * **GitHub Projects Sync & Export**: `ierp sync gh-projects` ingests GitHub repositories via GraphQL into `events.db`, and `ierp export gh-projects` exports `github_repos_all.json`.
-  * **Cloudflare R2 Bidirectional Sync**: `ierp r2 [status|push|pull|auto]` performs atomic SQLite WAL checkpointing and syncs `db/ierp_latest.sqlite` with Cloudflare R2 (`ichsanul-dev`) using pure Go AWS SigV4.
+  * **Downstream Export Guardrail**: `ierp export check [--fix]` validates that `pay.json`, `referrals.json`, and `github_repos_all.json` are never lagging behind database updates. Automated in workstation `postflight` and `ierp` git post-commit hooks.
+  * **Two-Tier SSOT Storage**: Turso libSQL Cloud is the primary read/write Tier 1 SSOT for `ierp` (events, CRM, commitments, runway). Binary R2 sync (`ierp r2`) is reserved strictly as a secondary cold archive.
 * **Upstream Intake**:
   * **Portfolio Snapshots**: `ierp sync portfolio` reads `ierp/data/portfolio/latest_snapshot.json`, inserts `networth_snapshots`, and calculates sovereign runway.
   * **Commitments & Burn**: Fixed monthly commitments feed `ierp insert-commitment` for runway calculations.

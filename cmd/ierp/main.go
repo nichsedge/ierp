@@ -158,8 +158,10 @@ func main() {
 			handleExportCommerce(args[1:])
 		} else if len(args) > 0 && args[0] == "transparency" {
 			handleExportTransparency(args[1:])
+		} else if len(args) > 0 && (args[0] == "check" || args[0] == "guardrail") {
+			handleExportCheck(args[1:])
 		} else {
-			fmt.Println("Usage: ierp export [gh-projects|garden|commerce|transparency]")
+			fmt.Println("Usage: ierp export [gh-projects|garden|commerce|transparency|check]")
 		}
 	case "sync-portfolio":
 		handleSyncPortfolio(args)
@@ -1579,6 +1581,10 @@ func handleExportCommerce(args []string) {
 }
 
 func handleR2(args []string) {
+	if config.TursoURL() != "" {
+		fmt.Printf("%sℹ️  Tier 1 Cloud SSOT Active: Turso libSQL Cloud is the primary read/write endpoint.%s\n", config.Cyan, config.Reset)
+	}
+
 	subcmd := "auto"
 	if len(args) > 0 {
 		subcmd = args[0]
@@ -1668,6 +1674,146 @@ func handleExportGitHub(args []string) {
 		os.Exit(1)
 	}
 	fmt.Printf("%s✓ Exported %d repositories to %s%s\n", config.Green, count, outPath, config.Reset)
+}
+
+func handleExportCheck(args []string) {
+	fs := flag.NewFlagSet("export-check", flag.ExitOnError)
+	fix := fs.Bool("fix", false, "Automatically regenerate lagging downstream exports")
+	fs.BoolVar(fix, "f", false, "Alias for --fix")
+	quiet := fs.Bool("quiet", false, "Silent mode (exit code only)")
+	_ = fs.Parse(args)
+
+	home, _ := os.UserHomeDir()
+	dataDir := filepath.Join(home, "Projects", "nichsedge.github.io", "data")
+	dbPath := config.LocalDBPath()
+
+	var dbMTime time.Time
+	if fi, err := os.Stat(dbPath); err == nil {
+		dbMTime = fi.ModTime().UTC()
+	}
+
+	targets := []struct {
+		Name     string
+		Path     string
+		Category string
+	}{
+		{"pay.json", filepath.Join(dataDir, "pay.json"), "commerce"},
+		{"referrals.json", filepath.Join(dataDir, "referrals.json"), "commerce"},
+		{"github_repos_all.json", filepath.Join(dataDir, "github_repos_all.json"), "gh-projects"},
+	}
+
+	type targetStatus struct {
+		Name     string
+		Path     string
+		Status   string // FRESH, STALE, MISSING
+		DiffSec  float64
+		Category string
+	}
+
+	var statuses []targetStatus
+	hasStale := false
+
+	for _, t := range targets {
+		fi, err := os.Stat(t.Path)
+		if os.IsNotExist(err) {
+			statuses = append(statuses, targetStatus{
+				Name:     t.Name,
+				Path:     t.Path,
+				Status:   "MISSING",
+				Category: t.Category,
+			})
+			hasStale = true
+			continue
+		}
+
+		targetMTime := fi.ModTime().UTC()
+		diff := dbMTime.Sub(targetMTime).Seconds()
+		if diff > 60 { // Lagging behind database by > 1 minute
+			statuses = append(statuses, targetStatus{
+				Name:     t.Name,
+				Path:     t.Path,
+				Status:   "STALE",
+				DiffSec:  diff,
+				Category: t.Category,
+			})
+			hasStale = true
+		} else {
+			statuses = append(statuses, targetStatus{
+				Name:     t.Name,
+				Path:     t.Path,
+				Status:   "FRESH",
+				DiffSec:  diff,
+				Category: t.Category,
+			})
+		}
+	}
+
+	if *fix && hasStale {
+		database := openDB()
+		defer database.Close()
+
+		needCommerce := false
+		needGH := false
+		for _, s := range statuses {
+			if s.Status != "FRESH" {
+				if s.Category == "commerce" {
+					needCommerce = true
+				} else if s.Category == "gh-projects" {
+					needGH = true
+				}
+			}
+		}
+
+		if needCommerce {
+			_, _, _ = commerce.ExportCommerceFiles(database, dataDir)
+		}
+		if needGH {
+			ghPath := filepath.Join(dataDir, "github_repos_all.json")
+			_, _ = ghrepos.ExportGitHubRepos(context.Background(), database, ghPath)
+		}
+
+		if !*quiet {
+			fmt.Printf("%s✓ Downstream Export Guardrail: Regenerated stale export files in nichsedge.github.io/data%s\n",
+				config.Green, config.Reset)
+		}
+		return
+	}
+
+	if *quiet {
+		if hasStale {
+			os.Exit(1)
+		}
+		return
+	}
+
+	fmt.Println("================================================================================")
+	if hasStale {
+		fmt.Printf("%s⚠️  DOWNSTREAM EXPORT GUARDRAIL: STALE EXPORTS DETECTED%s\n", config.Yellow, config.Reset)
+	} else {
+		fmt.Printf("%s✅ DOWNSTREAM EXPORT GUARDRAIL: ALL EXPORTS IN-SYNC%s\n", config.Green, config.Reset)
+	}
+	fmt.Println("================================================================================")
+	for _, s := range statuses {
+		color := config.Green
+		icon := "✓"
+		if s.Status == "STALE" {
+			color = config.Yellow
+			icon = "⚠️"
+		} else if s.Status == "MISSING" {
+			color = config.Red
+			icon = "❌"
+		}
+		fmt.Printf(" %s%s %-25s [%-7s]%s %s\n",
+			color, icon, s.Name, s.Status, config.Reset, s.Path)
+	}
+	fmt.Println("================================================================================")
+
+	if hasStale {
+		if !*fix {
+			fmt.Printf("Tip: Run 'ierp export check --fix' or 'ierp export [commerce|gh-projects]' to regenerate.\n")
+			os.Exit(1)
+		}
+	}
 }
 
 func handleInsertAntiVision(args []string) {
