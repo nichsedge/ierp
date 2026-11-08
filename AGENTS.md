@@ -23,7 +23,7 @@
 iERP is the **Central Single Source of Truth (SSOT) for Structured Personal ERP Data** across the entire workstation ([`~/Projects/DATA_ARCHITECTURE.md`](file:///home/al/Projects/DATA_ARCHITECTURE.md)):
 
 * **Downstream Export & Sync Pipelines**:
-  * **Digital Graveyard Deep Export**: `ierp export-garden` (or `ierp export garden`) regenerates hardware notes, strategic initiatives, decision journals, and retrospectives in `~/Projects/digital-graveyard`.
+  * **Digital Graveyard Deep Export**: `ierp export-garden` (or `ierp export garden`) regenerates hardware notes, strategic initiatives, decision journals, retrospectives, anti-vision guardrails, and vocational role explorations in `~/Projects/digital-graveyard`.
   * **Commerce Export**: `ierp export-commerce` (or `ierp export commerce`) regenerates `pay.json` and `referrals.json` in `~/Projects/nichsedge.github.io/data/`.
   * **Sovereign Transparency Export**: `ierp export-transparency` (or `ierp export transparency`) writes `transparency.json` to `~/Projects/ierp/data/` — privacy-safe percentages and runway metrics for internal review.
   * **GitHub Projects Sync & Export**: `ierp sync gh-projects` ingests GitHub repositories via GraphQL into `events.db`, and `ierp export gh-projects` exports `github_repos_all.json`.
@@ -55,6 +55,8 @@ Code in `internal/` is organized by bounded domain services:
 | `internal/projects`| Strategic initiative tracking and event linking | `projects` |
 | `internal/decisions`| Decision journal, confidence calibration, and retrospective review tracking | `decisions` |
 | `internal/reviews` | Sprint retrospectives (weekly, monthly, quarterly) | `retrospectives` |
+| `internal/antivision` | Anti-vision negative constraints & life guardrails | `antivision_items` |
+| `internal/career` | Vocational role explorations & capabilities inventory | `role_explorations`, `skills_inventory` |
 | `internal/gadgets` | Hardware assets and physical asset registry | `gadgets` |
 | `internal/vendors` | Service merchants, vendors, and favorite toggling | `vendors` |
 | `internal/commerce`| Payment destination accounts and affiliate referral codes | `payment_accounts`, `referrals` |

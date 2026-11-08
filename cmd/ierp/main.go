@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -11,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nichsedge/ierp/internal/antivision"
 	"github.com/nichsedge/ierp/internal/audit"
+	"github.com/nichsedge/ierp/internal/career"
 	"github.com/nichsedge/ierp/internal/commerce"
 	"github.com/nichsedge/ierp/internal/config"
 	"github.com/nichsedge/ierp/internal/contacts"
@@ -102,6 +105,22 @@ func main() {
 		handleInsertReview(args)
 	case "reviews":
 		handleListReviews(args)
+	case "insert-antivision":
+		handleInsertAntiVision(args)
+	case "antivision":
+		handleListAntiVision(args)
+	case "update-antivision":
+		handleUpdateAntiVision(args)
+	case "delete-antivision":
+		handleDeleteAntiVision(args)
+	case "insert-role":
+		handleInsertRole(args)
+	case "roles":
+		handleListRoles(args)
+	case "insert-skill":
+		handleInsertSkill(args)
+	case "skills":
+		handleListSkills(args)
 	case "insert-gadget":
 		handleInsertGadget(args)
 	case "gadgets":
@@ -205,6 +224,14 @@ func printUsage() {
 	fmt.Println("  review-decision      Record retrospective review outcome for a decision")
 	fmt.Println("  insert-review        Record a weekly/monthly sprint retrospective")
 	fmt.Println("  reviews              List retrospective reviews")
+	fmt.Println("  insert-antivision    Record an anti-vision negative constraint")
+	fmt.Println("  antivision           List anti-vision constraints (--domain, --status, --json)")
+	fmt.Println("  update-antivision    Update an anti-vision item (status, severity, notes)")
+	fmt.Println("  delete-antivision    Delete an anti-vision item by ID")
+	fmt.Println("  insert-role          Record a vocational role exploration")
+	fmt.Println("  roles                List vocational role explorations (--status, --json)")
+	fmt.Println("  insert-skill         Record a skill into capability inventory")
+	fmt.Println("  skills               List capability inventory skills (--type, --json)")
 	fmt.Println("  insert-gadget        Register a hardware asset")
 	fmt.Println("  gadgets              List registered hardware gadgets")
 	fmt.Println("  insert-vendor        Register a merchant or service vendor")
@@ -1510,6 +1537,8 @@ func handleExportGarden(args []string) {
 	fmt.Printf("  Decision Journal (PDR): %d notes\n", summary.Decisions)
 	fmt.Printf("  Sprint Retrospectives:  %d notes\n", summary.Retrospectives)
 	fmt.Printf("  Hardware Gadgets:       %d notes\n", summary.Gadgets)
+	fmt.Printf("  Anti-Vision Guardrails: %d items\n", summary.AntiVision)
+	fmt.Printf("  Role & Skills Matrix:   %d entries\n", summary.Career)
 }
 
 func handleExportTransparency(args []string) {
@@ -1639,4 +1668,249 @@ func handleExportGitHub(args []string) {
 		os.Exit(1)
 	}
 	fmt.Printf("%s✓ Exported %d repositories to %s%s\n", config.Green, count, outPath, config.Reset)
+}
+
+func handleInsertAntiVision(args []string) {
+	fs := flag.NewFlagSet("insert-antivision", flag.ExitOnError)
+	desc := fs.String("desc", "", "Description of negative constraint (required)")
+	domains := fs.String("domains", "", "Comma-separated domains (family, work/finance, friends, fitness, behaviour, topics)")
+	severity := fs.Int("severity", 3, "Severity level (1-5)")
+	status := fs.String("status", "active", "Status (active, mitigated, transcended, deprecated)")
+	dateLogged := fs.String("date", time.Now().Format("2006-01-02"), "Date logged (YYYY-MM-DD)")
+	notes := fs.String("notes", "", "Additional context or notes")
+	_ = fs.Parse(args)
+
+	if *desc == "" {
+		fmt.Fprintf(os.Stderr, "%sError: --desc is required%s\n", config.Red, config.Reset)
+		os.Exit(1)
+	}
+
+	database := openDB()
+	defer database.Close()
+
+	id, err := antivision.InsertAntiVision(database, antivision.AntiVisionItem{
+		Description: *desc,
+		Domains:     *domains,
+		Status:      *status,
+		Severity:    *severity,
+		DateLogged:  *dateLogged,
+		Notes:       *notes,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+	fmt.Printf("%sAnti-Vision constraint #%d recorded: %s%s\n", config.Green, id, *desc, config.Reset)
+}
+
+func handleListAntiVision(args []string) {
+	fs := flag.NewFlagSet("antivision", flag.ExitOnError)
+	domain := fs.String("domain", "", "Filter by domain (family, work/finance, friends, fitness, behaviour, topics)")
+	status := fs.String("status", "active", "Filter by status (active, mitigated, all)")
+	jsonOutput := fs.Bool("json", false, "Output as JSON")
+	_ = fs.Parse(args)
+
+	database := openDB()
+	defer database.Close()
+
+	items, err := antivision.ListAntiVision(database, *domain, *status)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+
+	if *jsonOutput {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(items)
+		return
+	}
+
+	fmt.Printf("%s=== Anti-Vision Constraints (%d entries) ===%s\n", config.Bold, len(items), config.Reset)
+	for _, it := range items {
+		fmt.Printf("#%-3d | [sev %d/5] | %-12s | %-10s | %-32s | %s\n", it.ID, it.Severity, it.Status, it.DateLogged, it.Description, it.Domains)
+	}
+}
+
+func handleUpdateAntiVision(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintf(os.Stderr, "%sUsage: ierp update-antivision <id> [--status <val>] [--severity <1-5>] [--notes <text>]%s\n", config.Red, config.Reset)
+		os.Exit(1)
+	}
+
+	id, err := strconv.Atoi(args[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sInvalid ID: %s%s\n", config.Red, args[0], config.Reset)
+		os.Exit(1)
+	}
+
+	fs := flag.NewFlagSet("update-antivision", flag.ExitOnError)
+	status := fs.String("status", "", "Updated status (active, mitigated, transcended, deprecated)")
+	severity := fs.Int("severity", 0, "Updated severity (1-5)")
+	notes := fs.String("notes", "", "Updated notes")
+	_ = fs.Parse(args[1:])
+
+	var sevPtr *int
+	if *severity > 0 {
+		sevPtr = severity
+	}
+
+	database := openDB()
+	defer database.Close()
+
+	ok, err := antivision.UpdateAntiVision(database, id, *status, sevPtr, *notes)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+	if !ok {
+		fmt.Printf("%sAnti-Vision constraint #%d not found or unchanged%s\n", config.Yellow, id, config.Reset)
+		return
+	}
+	fmt.Printf("%sAnti-Vision constraint #%d updated successfully%s\n", config.Green, id, config.Reset)
+}
+
+func handleDeleteAntiVision(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintf(os.Stderr, "%sUsage: ierp delete-antivision <id>%s\n", config.Red, config.Reset)
+		os.Exit(1)
+	}
+
+	id, err := strconv.Atoi(args[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sInvalid ID: %s%s\n", config.Red, args[0], config.Reset)
+		os.Exit(1)
+	}
+
+	database := openDB()
+	defer database.Close()
+
+	ok, err := antivision.DeleteAntiVision(database, id)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+	if !ok {
+		fmt.Printf("%sAnti-Vision constraint #%d not found%s\n", config.Yellow, id, config.Reset)
+		return
+	}
+	fmt.Printf("%sAnti-Vision constraint #%d deleted%s\n", config.Green, id, config.Reset)
+}
+
+func handleInsertRole(args []string) {
+	fs := flag.NewFlagSet("insert-role", flag.ExitOnError)
+	role := fs.String("role", "", "Role title (required)")
+	category := fs.String("category", "", "Category (engineering, design, trading, writing, education)")
+	status := fs.String("status", "explored", "Status (explored, active, pivoted, shelved)")
+	dateLogged := fs.String("date", time.Now().Format("2006-01-02"), "Date logged (YYYY-MM-DD)")
+	notes := fs.String("notes", "", "Reflection or notes")
+	_ = fs.Parse(args)
+
+	if *role == "" {
+		fmt.Fprintf(os.Stderr, "%sError: --role is required%s\n", config.Red, config.Reset)
+		os.Exit(1)
+	}
+
+	database := openDB()
+	defer database.Close()
+
+	id, err := career.InsertRole(database, career.RoleExploration{
+		Role:       *role,
+		Category:   *category,
+		Status:     *status,
+		DateLogged: *dateLogged,
+		Notes:      *notes,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+	fmt.Printf("%sRole exploration #%d recorded: %s%s\n", config.Green, id, *role, config.Reset)
+}
+
+func handleListRoles(args []string) {
+	fs := flag.NewFlagSet("roles", flag.ExitOnError)
+	status := fs.String("status", "", "Filter by status (explored, active, pivoted, all)")
+	jsonOutput := fs.Bool("json", false, "Output as JSON")
+	_ = fs.Parse(args)
+
+	database := openDB()
+	defer database.Close()
+
+	roles, err := career.ListRoles(database, *status)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+
+	if *jsonOutput {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(roles)
+		return
+	}
+
+	fmt.Printf("%s=== Role Explorations (%d entries) ===%s\n", config.Bold, len(roles), config.Reset)
+	for _, r := range roles {
+		fmt.Printf("#%-3d | %-26s | %-18s | %-10s | %s\n", r.ID, r.Role, r.Category, r.Status, r.DateLogged)
+	}
+}
+
+func handleInsertSkill(args []string) {
+	fs := flag.NewFlagSet("insert-skill", flag.ExitOnError)
+	skill := fs.String("skill", "", "Skill name (required)")
+	skillType := fs.String("type", "soft", "Type (soft, hard)")
+	status := fs.String("status", "active", "Status (active, learning, dormant)")
+	dateLogged := fs.String("date", time.Now().Format("2006-01-02"), "Date logged (YYYY-MM-DD)")
+	notes := fs.String("notes", "", "Notes")
+	_ = fs.Parse(args)
+
+	if *skill == "" {
+		fmt.Fprintf(os.Stderr, "%sError: --skill is required%s\n", config.Red, config.Reset)
+		os.Exit(1)
+	}
+
+	database := openDB()
+	defer database.Close()
+
+	id, err := career.InsertSkill(database, career.SkillInventory{
+		Skill:      *skill,
+		SkillType:  *skillType,
+		Status:     *status,
+		DateLogged: *dateLogged,
+		Notes:      *notes,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+	fmt.Printf("%sSkill #%d recorded: %s (%s)%s\n", config.Green, id, *skill, *skillType, config.Reset)
+}
+
+func handleListSkills(args []string) {
+	fs := flag.NewFlagSet("skills", flag.ExitOnError)
+	skillType := fs.String("type", "", "Filter by type (soft, hard, all)")
+	jsonOutput := fs.Bool("json", false, "Output as JSON")
+	_ = fs.Parse(args)
+
+	database := openDB()
+	defer database.Close()
+
+	skills, err := career.ListSkills(database, *skillType)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+
+	if *jsonOutput {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(skills)
+		return
+	}
+
+	fmt.Printf("%s=== Capability & Skills Inventory (%d entries) ===%s\n", config.Bold, len(skills), config.Reset)
+	for _, s := range skills {
+		fmt.Printf("#%-3d | %-24s | %-6s | %-8s | %s\n", s.ID, s.Skill, s.SkillType, s.Status, s.DateLogged)
+	}
 }

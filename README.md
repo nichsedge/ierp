@@ -124,6 +124,14 @@ ierp dashboard --port 8921
 | `ierp complete-maintenance <ID>` | Mark task complete (auto-reschedules if interval configured). |
 | `ierp insert-review` | Log a sprint retrospective (`--start`, `--end`, `--type`, `--wins`, `--drains`, `--lessons`, `--focus`). |
 | `ierp reviews` | List sprint retrospectives. |
+| `ierp insert-antivision` | Record an anti-vision negative constraint (`--desc`, `--domains`, `--severity`, `--date`, `--notes`). |
+| `ierp antivision` | List anti-vision constraints (`--domain`, `--status`, `--json`). |
+| `ierp update-antivision <ID>` | Update an anti-vision item (`--status`, `--severity`, `--notes`). |
+| `ierp delete-antivision <ID>` | Delete an anti-vision item by ID. |
+| `ierp insert-role` | Record a vocational role exploration (`--role`, `--category`, `--status`, `--date`, `--notes`). |
+| `ierp roles` | List vocational role explorations (`--status`, `--json`). |
+| `ierp insert-skill` | Record a skill into capability inventory (`--skill`, `--type`, `--status`, `--date`, `--notes`). |
+| `ierp skills` | List capability inventory skills (`--type`, `--json`). |
 | `ierp audit` | Scan entire ERP for missing data, overdue items, and actionable next steps. |
 | `ierp insert` | Insert a structured journal event (`--title`, `--place`, `--start`, `--tags`, `--contacts`). |
 | `ierp list` | List recent events with filters (`--limit`, `--tag`, `--q`). |

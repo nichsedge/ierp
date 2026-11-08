@@ -354,6 +354,40 @@ func InitDB(dbPath string, verbose bool) error {
         synced_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
 
+    CREATE TABLE IF NOT EXISTS antivision_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        description TEXT NOT NULL,
+        domains TEXT NOT NULL,
+        status TEXT DEFAULT 'active',
+        severity INTEGER DEFAULT 3,
+        date_logged TEXT NOT NULL,
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS role_explorations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        role TEXT NOT NULL,
+        category TEXT,
+        status TEXT DEFAULT 'explored',
+        date_logged TEXT NOT NULL,
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS skills_inventory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        skill TEXT NOT NULL,
+        skill_type TEXT NOT NULL,
+        status TEXT DEFAULT 'active',
+        date_logged TEXT NOT NULL,
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+
     DROP TABLE IF EXISTS receipts;
     `
 
@@ -409,6 +443,10 @@ func InitDB(dbPath string, verbose bool) error {
     CREATE INDEX IF NOT EXISTS idx_gh_repos_name ON github_repositories(name);
     CREATE INDEX IF NOT EXISTS idx_gh_repos_full_name ON github_repositories(full_name);
     CREATE INDEX IF NOT EXISTS idx_gh_repos_updated_at ON github_repositories(updated_at);
+    CREATE INDEX IF NOT EXISTS idx_antivision_status ON antivision_items(status);
+    CREATE INDEX IF NOT EXISTS idx_antivision_date ON antivision_items(date_logged);
+    CREATE INDEX IF NOT EXISTS idx_role_explorations_status ON role_explorations(status);
+    CREATE INDEX IF NOT EXISTS idx_skills_type ON skills_inventory(skill_type);
     `
 	if _, err := database.Exec(indexes); err != nil {
 		return fmt.Errorf("failed creating indexes: %w", err)
