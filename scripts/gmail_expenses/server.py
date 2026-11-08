@@ -192,11 +192,11 @@ def query_turso_inbox() -> list[dict]:
     pipeline_url = f"{TURSO_URL}/v2/pipeline"
     headers = {"Authorization": f"Bearer {TURSO_TOKEN}", "Content-Type": "application/json"}
     sql = """
-    SELECT id, source, message_id, merchant, amount, currency, category, payment_method, received_at
+    SELECT id, source, message_id, merchant, amount, currency, category, payment_method, received_at, type
     FROM email_expenses
     WHERE synced_at IS NULL
     ORDER BY received_at DESC
-    LIMIT 50;
+    LIMIT 100;
     """
     payload = {"requests": [{"type": "execute", "stmt": {"sql": sql}}]}
     try:
@@ -209,6 +209,7 @@ def query_turso_inbox() -> list[dict]:
             item = {}
             for idx, cell in enumerate(row):
                 item[cols[idx]] = cell.get("value")
+            item["type"] = item.get("type") or "EXPENSE"
             # Apply dynamic merchant rules in case they were updated after ingestion
             clean_m, detected_cat = apply_merchant_rule(item.get("merchant", ""), "")
             if clean_m and clean_m != item.get("merchant"):
@@ -259,9 +260,33 @@ def parse_financial_transaction(msg_id: str, headers: dict, raw_body: str, snipp
     merchant = "Unknown"
     payment_method = "Unknown"
     category = "Misc"
+    tx_type = "EXPENSE"
+
+    # Bareksa SBN Kupon / Imbal Hasil (Income)
+    if "bareksa.com" in sender.lower() and ("kupon" in subject.lower() or "imbal hasil" in subject.lower()):
+        tx_type = "INCOME"
+        category = "Investments"
+        payment_method = "Bareksa"
+
+        seri_match = re.search(r"(?:seri|kupon)\s+([A-Z0-9]+)", subject + " " + full_text, re.IGNORECASE)
+        seri = seri_match.group(1).upper() if seri_match else "SBN"
+        merchant = f"Kupon SBN {seri}"
+
+        m = re.search(r"(?:imbal hasil|nominal)\s*(?:rp|idr)?\s*([0-9.,]+)", full_text, re.IGNORECASE)
+        if not m:
+            m = re.search(r"Rp\s*([0-9.,]+)", snippet + " " + full_text)
+        if m:
+            amount = float(m.group(1).replace(".", "").replace(",", "."))
+
+        if "cimb niaga" in full_text.lower():
+            payment_method = "CIMB Niaga"
+        elif "bca" in full_text.lower():
+            payment_method = "BCA"
+        elif "mandiri" in full_text.lower():
+            payment_method = "Mandiri"
 
     # Krom Bank QRIS
-    if "krom.id" in sender.lower() and "qris" in subject.lower():
+    elif "krom.id" in sender.lower() and "qris" in subject.lower():
         payment_method = "QRIS (Krom)"
         for line in lines:
             if line.startswith("Merchant:"):
@@ -346,7 +371,8 @@ def parse_financial_transaction(msg_id: str, headers: dict, raw_body: str, snipp
             "merchant": merchant,
             "category": category,
             "payment_method": payment_method,
-            "raw_snippet": snippet[:500]
+            "raw_snippet": snippet[:500],
+            "type": tx_type
         }
     return None
 
@@ -364,12 +390,14 @@ def save_to_turso(record: dict) -> bool:
     sql = """
     INSERT INTO email_expenses (
         id, source, message_id, sender, subject, received_at,
-        amount, currency, merchant, category, payment_method, raw_snippet
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        amount, currency, merchant, category, payment_method, raw_snippet, type
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(message_id) DO UPDATE SET
         amount=excluded.amount,
         merchant=excluded.merchant,
-        category=excluded.category;
+        category=excluded.category,
+        payment_method=excluded.payment_method,
+        type=excluded.type;
     """
 
     args = [
@@ -384,7 +412,8 @@ def save_to_turso(record: dict) -> bool:
         {"type": "text", "value": str(record.get("merchant", "Unknown"))},
         {"type": "text", "value": str(record.get("category", "Misc"))},
         {"type": "text", "value": str(record.get("payment_method", "Unknown"))},
-        {"type": "text", "value": str(record.get("raw_snippet", "")[:500])}
+        {"type": "text", "value": str(record.get("raw_snippet", "")[:500])},
+        {"type": "text", "value": str(record.get("type", "EXPENSE"))}
     ]
 
     payload = {"requests": [{"type": "execute", "stmt": {"sql": sql, "args": args}}]}
