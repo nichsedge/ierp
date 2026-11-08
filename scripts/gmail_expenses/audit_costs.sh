@@ -16,6 +16,18 @@ TOTAL_MB=$(echo "scale=2; $TOTAL_BYTES / 1048576" | bc)
 echo "   • Active Images : $IMAGE_COUNT image(s)"
 echo "   • Total Storage : ${TOTAL_MB} MB / 500 MB Free Tier limit"
 
+if [ "$IMAGE_COUNT" -gt 1 ]; then
+    ACTIVE_IMAGE=$(gcloud run services describe gmail-expenses-worker --region=us-central1 --format="value(spec.template.spec.containers[0].image)" 2>/dev/null || echo "")
+    ACTIVE_DIGEST=$(echo "$ACTIVE_IMAGE" | grep -o 'sha256:[a-f0-9]*' || echo "")
+    echo "   🧹 Pruning superseded image versions (active: ${ACTIVE_DIGEST:0:15})..."
+    for digest in $(echo "$IMAGE_LIST_JSON" | jq -r '.[].version'); do
+        if [ "$digest" != "$ACTIVE_DIGEST" ] && [ -n "$digest" ]; then
+            echo "      - Deleting stale image ${digest:0:15}..."
+            gcloud artifacts docker images delete "us-central1-docker.pkg.dev/ichsanul-dev/cloud-run-source-deploy/gmail-expenses-worker@$digest" --quiet --delete-tags 2>/dev/null || true
+        fi
+    done
+fi
+
 if (( $(echo "$TOTAL_MB > 400" | bc -l) )); then
     echo "   ⚠️ WARNING: Repository size is nearing 500MB free tier limit!"
 else
