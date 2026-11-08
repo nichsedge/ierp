@@ -3,6 +3,7 @@ import sys
 import json
 import base64
 import re
+import time
 import hashlib
 import hmac
 import urllib.request
@@ -114,6 +115,77 @@ def r2_get_object(key: str) -> bytes | None:
         print(f"❌ R2 GET error ({key}): {e}")
         return None
 
+RULES_CACHE: list[dict] = []
+RULES_CACHE_TIME: float = 0.0
+
+def get_merchant_rules() -> list[dict]:
+    global RULES_CACHE, RULES_CACHE_TIME
+    now = time.time()
+    if RULES_CACHE and (now - RULES_CACHE_TIME) < 300:
+        return RULES_CACHE
+    if not (TURSO_URL and TURSO_TOKEN):
+        return []
+    try:
+        pipeline_url = f"{TURSO_URL}/v2/pipeline"
+        headers = {"Authorization": f"Bearer {TURSO_TOKEN}", "Content-Type": "application/json"}
+        sql = "SELECT pattern, clean_merchant, category FROM merchant_rules ORDER BY length(pattern) DESC;"
+        payload = {"requests": [{"type": "execute", "stmt": {"sql": sql}}]}
+        res = requests.post(pipeline_url, json=payload, headers=headers, timeout=10)
+        data = res.json()
+        exec_res = data.get("results", [{}])[0].get("response", {}).get("result", {})
+        rules = []
+        for row in exec_res.get("rows", []):
+            pat = row[0].get("value", "").lower() if row[0] else ""
+            clean = row[1].get("value") if row[1] and row[1].get("value") else None
+            cat = row[2].get("value", "Misc") if row[2] else "Misc"
+            if pat:
+                rules.append({"pattern": pat, "clean_merchant": clean, "category": cat})
+        RULES_CACHE = rules
+        RULES_CACHE_TIME = now
+        return rules
+    except Exception as e:
+        print(f"⚠️ Error fetching merchant rules from Turso: {e}")
+        return RULES_CACHE
+
+def apply_merchant_rule(merchant: str, text: str = "") -> tuple[str, str]:
+    rules = get_merchant_rules()
+    haystack = f"{merchant} {text}".lower()
+    for r in rules:
+        if r["pattern"] in haystack:
+            clean = r["clean_merchant"] or merchant
+            return clean, r["category"]
+    return merchant, "Misc"
+
+def add_merchant_rule(pattern: str, clean_merchant: str | None, category: str, notes: str = "") -> bool:
+    global RULES_CACHE, RULES_CACHE_TIME
+    if not (TURSO_URL and TURSO_TOKEN):
+        return False
+    pipeline_url = f"{TURSO_URL}/v2/pipeline"
+    headers = {"Authorization": f"Bearer {TURSO_TOKEN}", "Content-Type": "application/json"}
+    sql = """
+    INSERT INTO merchant_rules (pattern, clean_merchant, category, notes)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(pattern) DO UPDATE SET
+        clean_merchant=excluded.clean_merchant,
+        category=excluded.category,
+        notes=excluded.notes;
+    """
+    args = [
+        {"type": "text", "value": pattern.lower()},
+        {"type": "text", "value": clean_merchant} if clean_merchant else {"type": "null"},
+        {"type": "text", "value": category},
+        {"type": "text", "value": notes}
+    ]
+    payload = {"requests": [{"type": "execute", "stmt": {"sql": sql, "args": args}}]}
+    try:
+        res = requests.post(pipeline_url, json=payload, headers=headers, timeout=10)
+        RULES_CACHE = []
+        RULES_CACHE_TIME = 0.0
+        return res.status_code == 200
+    except Exception as e:
+        print(f"❌ Error adding merchant rule: {e}")
+        return False
+
 def query_turso_inbox() -> list[dict]:
     if not (TURSO_URL and TURSO_TOKEN):
         return []
@@ -137,6 +209,12 @@ def query_turso_inbox() -> list[dict]:
             item = {}
             for idx, cell in enumerate(row):
                 item[cols[idx]] = cell.get("value")
+            # Apply dynamic merchant rules in case they were updated after ingestion
+            clean_m, detected_cat = apply_merchant_rule(item.get("merchant", ""), "")
+            if clean_m and clean_m != item.get("merchant"):
+                item["merchant"] = clean_m
+            if item.get("category") in ("Misc", "General", None) and detected_cat != "Misc":
+                item["category"] = detected_cat
             items.append(item)
         return items
     except Exception as e:
@@ -250,6 +328,12 @@ def parse_financial_transaction(msg_id: str, headers: dict, raw_body: str, snipp
             category = "Shopping"
 
     if amount > 0:
+        clean_m, detected_cat = apply_merchant_rule(merchant, f"{subject} {snippet}")
+        if clean_m and clean_m != "Unknown":
+            merchant = clean_m
+        if detected_cat != "Misc":
+            category = detected_cat
+
         return {
             "id": f"gmail-{msg_id}",
             "source": "gmail",
@@ -398,7 +482,14 @@ class RequestHandler(BaseHTTPRequestHandler):
                 ]
             })
 
-        # 4. Gmail Renewal
+        # 4. Merchant Rules
+        if self.path == "/api/rules":
+            if not self.is_auth():
+                return self.send_json({"error": "Unauthorized"}, 401)
+            rules = get_merchant_rules()
+            return self.send_json({"success": True, "count": len(rules), "rules": rules})
+
+        # 5. Gmail Renewal
         if self.path == "/renew-watch":
             service = get_gmail_service()
             if not service:
@@ -430,7 +521,24 @@ class RequestHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self.send_json({"error": str(e)}, 400)
 
-        # 2. PubSub Push Webhook
+        # 2. Add/Update Merchant Rule
+        if self.path == "/api/rules":
+            if not self.is_auth():
+                return self.send_json({"error": "Unauthorized"}, 401)
+            try:
+                payload = json.loads(body.decode("utf-8"))
+                pat = payload.get("pattern", "").strip().lower()
+                clean = payload.get("clean_merchant")
+                cat = payload.get("category", "Misc").strip()
+                notes = payload.get("notes", "")
+                if not pat:
+                    return self.send_json({"error": "pattern is required"}, 400)
+                ok = add_merchant_rule(pat, clean, cat, notes)
+                return self.send_json({"success": ok, "pattern": pat, "clean_merchant": clean, "category": cat})
+            except Exception as e:
+                return self.send_json({"error": str(e)}, 400)
+
+        # 3. PubSub Push Webhook
         try:
             envelope = json.loads(body.decode("utf-8"))
             pubsub_message = envelope.get("message", {})
