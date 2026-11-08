@@ -446,20 +446,36 @@ class RequestHandler(BaseHTTPRequestHandler):
         token = auth[7:].strip() if auth.startswith("Bearer ") else self.headers.get("X-Sync-Token", "")
         return token == SYNC_AUTH_KEY
 
+    def is_backup_path(self) -> bool:
+        clean = self.path.split("?")[0].rstrip("/")
+        return clean in ("/api/backup", "/api/fitly/backup")
+
+    def resolve_backup_targets(self) -> tuple[str, str, str]:
+        # Returns (latest_key, archive_prefix, filename)
+        is_fitly = (
+            self.path.startswith("/api/fitly/backup") or
+            "app=fitly" in self.path or
+            self.headers.get("X-App", "").strip().lower() == "fitly"
+        )
+        if is_fitly:
+            return "db/fitly_latest.sqlite", "db/archive/fitly", "fitly_latest.sqlite"
+        return "db/sans_finance_latest.sqlite", "db/archive/sans_finance", "sans_finance_latest.sqlite"
+
     def do_OPTIONS(self):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Sync-Token")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Sync-Token, X-App")
         self.send_header("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, OPTIONS")
         self.end_headers()
 
     def do_HEAD(self):
-        if self.path == "/api/backup":
+        if self.is_backup_path():
             if not self.is_auth():
                 self.send_response(401)
                 self.end_headers()
                 return
-            data = r2_get_object("db/sans_finance_latest.sqlite")
+            latest_key, _, _ = self.resolve_backup_targets()
+            data = r2_get_object(latest_key)
             if not data:
                 self.send_response(404)
                 self.end_headers()
@@ -481,16 +497,17 @@ class RequestHandler(BaseHTTPRequestHandler):
             items = query_turso_inbox()
             return self.send_json({"success": True, "count": len(items), "items": items})
 
-        # 2. Backup download (Restore)
-        if self.path == "/api/backup":
+        # 2. Backup download (Restore) for Sans Finance & Fitly
+        if self.is_backup_path():
             if not self.is_auth():
                 return self.send_json({"error": "Unauthorized"}, 401)
-            data = r2_get_object("db/sans_finance_latest.sqlite")
+            latest_key, _, filename = self.resolve_backup_targets()
+            data = r2_get_object(latest_key)
             if not data:
-                return self.send_json({"error": "No backup found in R2"}, 404)
+                return self.send_json({"error": f"No backup found in R2 ({latest_key})"}, 404)
             self.send_response(200)
             self.send_header("Content-Type", "application/x-sqlite3")
-            self.send_header("Content-Disposition", 'attachment; filename="sans_finance_latest.sqlite"')
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
@@ -616,8 +633,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_PUT(self):
-        # Backup upload from Sans Finance
-        if self.path == "/api/backup":
+        # Backup upload from Sans Finance & Fitly
+        if self.is_backup_path():
             if not self.is_auth():
                 return self.send_json({"error": "Unauthorized"}, 401)
             content_length = int(self.headers.get("Content-Length", 0))
@@ -626,8 +643,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             db_bytes = self.rfile.read(content_length)
 
             now_stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-            archive_key = f"db/archive/sans_finance_{now_stamp}.sqlite"
-            latest_key = "db/sans_finance_latest.sqlite"
+            latest_key, archive_prefix, _ = self.resolve_backup_targets()
+            archive_key = f"{archive_prefix}_{now_stamp}.sqlite"
 
             ok1 = r2_put_object(latest_key, db_bytes)
             ok2 = r2_put_object(archive_key, db_bytes)
