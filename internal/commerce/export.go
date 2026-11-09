@@ -1,12 +1,20 @@
 package commerce
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 )
+
+func writeFileIfChanged(path string, data []byte) error {
+	if existing, err := os.ReadFile(path); err == nil && bytes.Equal(existing, data) {
+		return nil
+	}
+	return os.WriteFile(path, data, 0644)
+}
 
 // ExportCommerceFiles exports pay.json and referrals.json to the portfolio data directory.
 func ExportCommerceFiles(database *sql.DB, targetDir string) (payCount int, refCount int, err error) {
@@ -61,7 +69,7 @@ func ExportCommerceFiles(database *sql.DB, targetDir string) (payCount int, refC
 		return 0, 0, err
 	}
 	payFile := filepath.Join(targetDir, "pay.json")
-	if err := os.WriteFile(payFile, payJSONData, 0644); err != nil {
+	if err := writeFileIfChanged(payFile, payJSONData); err != nil {
 		return 0, 0, fmt.Errorf("failed writing pay.json: %w", err)
 	}
 
@@ -102,7 +110,7 @@ func ExportCommerceFiles(database *sql.DB, targetDir string) (payCount int, refC
 		return len(payList), 0, err
 	}
 	refFile := filepath.Join(targetDir, "referrals.json")
-	if err := os.WriteFile(refFile, refJSONData, 0644); err != nil {
+	if err := writeFileIfChanged(refFile, refJSONData); err != nil {
 		return len(payList), 0, fmt.Errorf("failed writing referrals.json: %w", err)
 	}
 

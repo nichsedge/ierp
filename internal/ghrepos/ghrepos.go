@@ -1,6 +1,7 @@
 package ghrepos
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -360,6 +361,22 @@ func ExportGitHubRepos(ctx context.Context, db *sql.DB, outputPath string) (int,
 
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
 		return 0, err
+	}
+
+	// Avoid unnecessary git churn: if repo contents are identical, preserve existing file and timestamp
+	newReposBytes, marshalErr := json.Marshal(records)
+	if marshalErr == nil {
+		if existingBytes, readErr := os.ReadFile(outputPath); readErr == nil {
+			var existing struct {
+				Repos []ExportedRepo `json:"repos"`
+			}
+			if unmarshalErr := json.Unmarshal(existingBytes, &existing); unmarshalErr == nil {
+				existingReposBytes, _ := json.Marshal(existing.Repos)
+				if bytes.Equal(newReposBytes, existingReposBytes) {
+					return len(records), nil
+				}
+			}
+		}
 	}
 
 	payloadObj := struct {

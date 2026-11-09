@@ -47,3 +47,7 @@ Untuk menguji coba tanpa menunggu email sungguhan:
 ```bash
 uv run ~/Projects/ierp/scripts/gmail_expenses/test_pipeline.py
 ```
+
+### 4. Merchant Rules & Parsing Normalization
+Tabel `merchant_rules` di Turso Cloud digunakan untuk normalisasi merchant dan kategori (misal `klik indomaret` / `indomaret` -> `Indomaret` dengan kategori `Food`). Parser transaksi email memotong footer promosi Kredivo (`Shop at Shopee`, dsb.) agar merchant asli seperti `Nama Merchant: KLIK INDOMARET` terdeteksi secara akurat.
+

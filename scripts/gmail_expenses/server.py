@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "google-api-python-client>=2.150.0",
+#     "google-auth>=2.36.0",
+#     "requests>=2.32.0",
+# ]
+# ///
 import os
 import sys
 import json
@@ -149,6 +157,14 @@ def get_merchant_rules() -> list[dict]:
 
 def apply_merchant_rule(merchant: str, text: str = "") -> tuple[str, str]:
     rules = get_merchant_rules()
+    m_lower = (merchant or "").lower()
+    # 1. First priority: match directly against merchant name
+    if m_lower and m_lower != "unknown":
+        for r in rules:
+            if r["pattern"] in m_lower:
+                clean = r["clean_merchant"] or merchant
+                return clean, r["category"]
+    # 2. Second priority: match against subject / snippet context
     haystack = f"{merchant} {text}".lower()
     for r in rules:
         if r["pattern"] in haystack:
@@ -214,7 +230,9 @@ def query_turso_inbox() -> list[dict]:
             clean_m, detected_cat = apply_merchant_rule(item.get("merchant", ""), "")
             if clean_m and clean_m != item.get("merchant"):
                 item["merchant"] = clean_m
-            if item.get("category") in ("Misc", "General", None) and detected_cat != "Misc":
+                if detected_cat != "Misc":
+                    item["category"] = detected_cat
+            elif item.get("category") in ("Misc", "General", None) and detected_cat != "Misc":
                 item["category"] = detected_cat
             items.append(item)
         return items
@@ -301,17 +319,72 @@ def parse_financial_transaction(msg_id: str, headers: dict, raw_body: str, snipp
     # Kredivo
     elif "kredivo" in sender.lower() or "kredivo" in subject.lower():
         payment_method = "Kredivo"
-        m = re.search(r"Rp\s*([0-9.,]+)", snippet + " " + full_text)
-        if m:
-            amount = float(m.group(1).replace(".", "").replace(",", "."))
-        if "shopee" in full_text.lower() or "shopee" in snippet.lower():
-            merchant = "Shopee"
-            category = "Shopping"
-        elif "tokopedia" in full_text.lower():
-            merchant = "Tokopedia"
-            category = "Shopping"
-        else:
-            merchant = "Kredivo Merchant"
+        # Prune promotional & security footer to prevent false positives (e.g. 'Shop at Shopee' footer ad)
+        body_lines = []
+        for line in lines:
+            if any(cut in line.lower() for cut in ["coba layanan favorit", "hati-hati dengan berbagai modus", "butuh bantuan?"]):
+                break
+            body_lines.append(line)
+
+        # 1. Amount extraction
+        for idx, line in enumerate(body_lines):
+            if any(k in line.lower() for k in ["transaksi berhasil!", "total yang perlu dibayar", "bayar dalam 1 bulan", "total belanja", "rp bayar:"]):
+                for target in [line, body_lines[idx+1] if idx+1 < len(body_lines) else ""]:
+                    m = re.search(r"Rp\s*([0-9.,]+)", target)
+                    if m:
+                        val = float(m.group(1).replace(".", "").replace(",", "."))
+                        if val > 0 and amount == 0.0:
+                            amount = val
+        if amount == 0.0:
+            m = re.search(r"Rp\s*([0-9.,]+)", snippet + " " + " ".join(body_lines))
+            if m:
+                amount = float(m.group(1).replace(".", "").replace(",", "."))
+
+        # 2. Merchant extraction: Check 'Nama Merchant'
+        for idx, line in enumerate(body_lines):
+            line_clean = line.strip().lower()
+            if line_clean in ("nama merchant", "merchant:") and idx + 1 < len(body_lines):
+                cand = body_lines[idx+1].strip()
+                if cand and not any(k in cand.lower() for k in ["tanggal", "id transaksi", "detail", "total"]):
+                    merchant = cand
+                    break
+            elif line_clean.startswith("nama merchant:"):
+                merchant = line.split(":", 1)[1].strip()
+                break
+            elif line_clean.startswith("merchant:"):
+                merchant = line.split(":", 1)[1].strip()
+                break
+
+        # 3. Check 'Tipe Transaksi' (e.g. 'Belanja di Shopee')
+        if merchant == "Unknown":
+            for idx, line in enumerate(body_lines):
+                if line.strip().lower() == "tipe transaksi" and idx + 1 < len(body_lines):
+                    tipe = body_lines[idx+1].strip()
+                    if "belanja di " in tipe.lower():
+                        merchant = re.sub(r"(?i)belanja\s+di\s+", "", tipe).strip()
+                        break
+
+        # 4. Check biller / utility services
+        content_upper = (" ".join(body_lines) + " " + subject).upper()
+        if merchant == "Unknown":
+            if any(k in content_upper for k in ["PLN", "TOKEN", "LISTRIK"]):
+                merchant = "PLN Listrik"
+                category = "Utility"
+            elif any(k in content_upper for k in ["PULSA", "PAKET DATA"]):
+                merchant = "Pulsa"
+                category = "Utility"
+
+        # 5. Check body_lines (excluding promotional footer) for marketplace keywords
+        if merchant == "Unknown":
+            body_joined = " ".join(body_lines).lower()
+            if "tokopedia" in body_joined:
+                merchant = "Tokopedia"
+                category = "Shopping"
+            elif "shopee" in snippet.lower() or "shopee" in subject.lower():
+                merchant = "Shopee"
+                category = "Shopping"
+            else:
+                merchant = "Kredivo Merchant"
 
     # GOERS / Ticketing
     elif "goersapp.com" in sender.lower() and ("tiket" in subject.lower() or "berhasil" in subject.lower()):

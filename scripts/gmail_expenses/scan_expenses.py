@@ -30,6 +30,50 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 TURSO_URL = os.environ.get("TURSO_DATABASE_URL", "").replace("libsql://", "https://")
 TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "")
 
+RULES_CACHE: list[dict] = []
+
+def get_merchant_rules() -> list[dict]:
+    global RULES_CACHE
+    if RULES_CACHE:
+        return RULES_CACHE
+    if not (TURSO_URL and TURSO_TOKEN):
+        return []
+    try:
+        pipeline_url = f"{TURSO_URL}/v2/pipeline"
+        headers = {"Authorization": f"Bearer {TURSO_TOKEN}", "Content-Type": "application/json"}
+        sql = "SELECT pattern, clean_merchant, category FROM merchant_rules ORDER BY length(pattern) DESC;"
+        payload = {"requests": [{"type": "execute", "stmt": {"sql": sql}}]}
+        res = requests.post(pipeline_url, json=payload, headers=headers, timeout=10)
+        data = res.json()
+        exec_res = data.get("results", [{}])[0].get("response", {}).get("result", {})
+        rules = []
+        for row in exec_res.get("rows", []):
+            pat = row[0].get("value", "").lower() if row[0] else ""
+            clean = row[1].get("value") if row[1] and row[1].get("value") else None
+            cat = row[2].get("value", "Misc") if row[2] else "Misc"
+            if pat:
+                rules.append({"pattern": pat, "clean_merchant": clean, "category": cat})
+        RULES_CACHE = rules
+        return rules
+    except Exception as e:
+        print(f"⚠️ Error fetching merchant rules from Turso: {e}")
+        return RULES_CACHE
+
+def apply_merchant_rule(merchant: str, text: str = "") -> tuple[str, str]:
+    rules = get_merchant_rules()
+    m_lower = (merchant or "").lower()
+    if m_lower and m_lower != "unknown":
+        for r in rules:
+            if r["pattern"] in m_lower:
+                clean = r["clean_merchant"] or merchant
+                return clean, r["category"]
+    haystack = f"{merchant} {text}".lower()
+    for r in rules:
+        if r["pattern"] in haystack:
+            clean = r["clean_merchant"] or merchant
+            return clean, r["category"]
+    return merchant, "Misc"
+
 def get_body(payload: dict) -> str:
     """Extracts raw html or plain text from multipart Gmail message payload."""
     if "data" in payload.get("body", {}):
@@ -87,17 +131,72 @@ def parse_financial_transaction(msg_id: str, headers: dict, raw_body: str, snipp
     # Specific Handler: Kredivo
     elif "kredivo" in sender.lower() or "kredivo" in subject.lower():
         payment_method = "Kredivo"
-        m = re.search(r"Rp\s*([0-9.,]+)", snippet + " " + full_text)
-        if m:
-            amount = float(m.group(1).replace(".", "").replace(",", "."))
-        if "shopee" in full_text.lower() or "shopee" in snippet.lower():
-            merchant = "Shopee"
-            category = "Shopping"
-        elif "tokopedia" in full_text.lower():
-            merchant = "Tokopedia"
-            category = "Shopping"
-        else:
-            merchant = "Kredivo Merchant"
+        # Prune promotional & security footer to prevent false positives (e.g. 'Shop at Shopee' footer ad)
+        body_lines = []
+        for line in lines:
+            if any(cut in line.lower() for cut in ["coba layanan favorit", "hati-hati dengan berbagai modus", "butuh bantuan?"]):
+                break
+            body_lines.append(line)
+
+        # 1. Amount extraction
+        for idx, line in enumerate(body_lines):
+            if any(k in line.lower() for k in ["transaksi berhasil!", "total yang perlu dibayar", "bayar dalam 1 bulan", "total belanja", "rp bayar:"]):
+                for target in [line, body_lines[idx+1] if idx+1 < len(body_lines) else ""]:
+                    m = re.search(r"Rp\s*([0-9.,]+)", target)
+                    if m:
+                        val = float(m.group(1).replace(".", "").replace(",", "."))
+                        if val > 0 and amount == 0.0:
+                            amount = val
+        if amount == 0.0:
+            m = re.search(r"Rp\s*([0-9.,]+)", snippet + " " + " ".join(body_lines))
+            if m:
+                amount = float(m.group(1).replace(".", "").replace(",", "."))
+
+        # 2. Merchant extraction: Check 'Nama Merchant'
+        for idx, line in enumerate(body_lines):
+            line_clean = line.strip().lower()
+            if line_clean in ("nama merchant", "merchant:") and idx + 1 < len(body_lines):
+                cand = body_lines[idx+1].strip()
+                if cand and not any(k in cand.lower() for k in ["tanggal", "id transaksi", "detail", "total"]):
+                    merchant = cand
+                    break
+            elif line_clean.startswith("nama merchant:"):
+                merchant = line.split(":", 1)[1].strip()
+                break
+            elif line_clean.startswith("merchant:"):
+                merchant = line.split(":", 1)[1].strip()
+                break
+
+        # 3. Check 'Tipe Transaksi' (e.g. 'Belanja di Shopee')
+        if merchant == "Unknown":
+            for idx, line in enumerate(body_lines):
+                if line.strip().lower() == "tipe transaksi" and idx + 1 < len(body_lines):
+                    tipe = body_lines[idx+1].strip()
+                    if "belanja di " in tipe.lower():
+                        merchant = re.sub(r"(?i)belanja\s+di\s+", "", tipe).strip()
+                        break
+
+        # 4. Check biller / utility services
+        content_upper = (" ".join(body_lines) + " " + subject).upper()
+        if merchant == "Unknown":
+            if any(k in content_upper for k in ["PLN", "TOKEN", "LISTRIK"]):
+                merchant = "PLN Listrik"
+                category = "Utility"
+            elif any(k in content_upper for k in ["PULSA", "PAKET DATA"]):
+                merchant = "Pulsa"
+                category = "Utility"
+
+        # 5. Check body_lines (excluding promotional footer) for marketplace keywords
+        if merchant == "Unknown":
+            body_joined = " ".join(body_lines).lower()
+            if "tokopedia" in body_joined:
+                merchant = "Tokopedia"
+                category = "Shopping"
+            elif "shopee" in snippet.lower() or "shopee" in subject.lower():
+                merchant = "Shopee"
+                category = "Shopping"
+            else:
+                merchant = "Kredivo Merchant"
 
     # Specific Handler: GOERS / Ticketing
     elif "goersapp.com" in sender.lower() and ("tiket" in subject.lower() or "berhasil" in subject.lower()):
@@ -131,6 +230,12 @@ def parse_financial_transaction(msg_id: str, headers: dict, raw_body: str, snipp
                 break
 
     if amount > 0:
+        clean_m, detected_cat = apply_merchant_rule(merchant, f"{subject} {snippet}")
+        if clean_m and clean_m != "Unknown":
+            merchant = clean_m
+        if detected_cat != "Misc":
+            category = detected_cat
+
         return {
             "id": f"gmail-{msg_id}",
             "source": "gmail",

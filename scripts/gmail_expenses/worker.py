@@ -149,7 +149,13 @@ def parse_expense_heuristic(text: str, subject: str = "", sender: str = "") -> d
     amount = 0.0
     currency = "IDR"
     
-    amount_match = re.search(r"(?:rp|idr)\.?\s*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?)", text + " " + subject, re.IGNORECASE)
+    # Prune promotional footer if present to avoid false positive brand matches (e.g. 'Shop at Shopee')
+    pruned_text = text
+    for cut in ["coba layanan favorit", "hati-hati dengan berbagai modus", "butuh bantuan?"]:
+        if cut in pruned_text.lower():
+            pruned_text = pruned_text[:pruned_text.lower().index(cut)]
+
+    amount_match = re.search(r"(?:rp|idr)\.?\s*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?)", pruned_text + " " + subject, re.IGNORECASE)
     if amount_match:
         raw_val = amount_match.group(1).replace(".", "").replace(",", ".")
         try:
@@ -158,14 +164,38 @@ def parse_expense_heuristic(text: str, subject: str = "", sender: str = "") -> d
             amount = 0.0
 
     merchant = "Unknown"
-    for brand in ["GoPay", "ShopeePay", "Shopee", "Tokopedia", "Grab", "Gojek", "BCA", "Mandiri", "Jenius", "Bank Jago", "Steam", "Spotify", "Netflix", "Google Play"]:
-        if brand.lower() in (sender + " " + subject + " " + text).lower():
-            merchant = brand
-            break
-
     category = "General"
-    combined = (subject + " " + text).lower()
-    if any(k in combined for k in ["kopi", "makan", "resto", "food", "kitchen", "cafe"]):
+    payment_method = "Electronic"
+
+    # Specific Kredivo handling
+    if "kredivo" in sender.lower() or "kredivo" in subject.lower():
+        payment_method = "Kredivo"
+        m_merchant = re.search(r"(?:nama merchant|merchant:)\s*([A-Za-z0-9\s&.-]+)", pruned_text, re.IGNORECASE)
+        if m_merchant:
+            cand = m_merchant.group(1).strip()
+            if not any(k in cand.lower() for k in ["tanggal", "id transaksi", "detail", "total"]):
+                merchant = cand
+        if merchant == "Unknown":
+            if "belanja di shopee" in pruned_text.lower():
+                merchant = "Shopee"
+                category = "Shopping"
+            elif "belanja di tokopedia" in pruned_text.lower():
+                merchant = "Tokopedia"
+                category = "Shopping"
+            elif any(k in pruned_text.upper() for k in ["PLN", "TOKEN", "LISTRIK"]):
+                merchant = "PLN Listrik"
+                category = "Bills & Utilities"
+
+    if merchant == "Unknown":
+        for brand in ["GoPay", "ShopeePay", "Shopee", "Tokopedia", "Grab", "Gojek", "BCA", "Mandiri", "Jenius", "Bank Jago", "Steam", "Spotify", "Netflix", "Google Play"]:
+            if brand.lower() in (sender + " " + subject + " " + pruned_text).lower():
+                merchant = brand
+                if merchant in ["GoPay", "ShopeePay", "BCA", "Jenius", "Bank Jago"]:
+                    payment_method = merchant
+                break
+
+    combined = (merchant + " " + subject + " " + pruned_text).lower()
+    if any(k in combined for k in ["indomaret", "alfamart", "kopi", "makan", "resto", "food", "kitchen", "cafe"]):
         category = "Food & Beverage"
     elif any(k in combined for k in ["ride", "car", "transit", "tol", "bensin", "parkir"]):
         category = "Transportation"
@@ -179,7 +209,7 @@ def parse_expense_heuristic(text: str, subject: str = "", sender: str = "") -> d
         "currency": currency,
         "merchant": merchant,
         "category": category,
-        "payment_method": merchant if merchant in ["GoPay", "ShopeePay", "BCA", "Jenius", "Bank Jago"] else "Electronic",
+        "payment_method": payment_method,
     }
 
 def extract_expense(text: str, subject: str = "", sender: str = "") -> dict:
