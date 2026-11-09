@@ -306,33 +306,39 @@ func (s *Scraper) Scrape(ctx context.Context, address string) (*ScrapeResult, er
 	timeoutCtx, cancelTimeout := context.WithTimeout(taskCtx, s.cfg.Timeout)
 	defer cancelTimeout()
 
-	var rawJSON string
-	var unfolded bool
-
-	actions := []chromedp.Action{
+	actions := []chromedp.Action[chromedp.Void]{
 		chromedp.Navigate(profileURL),
 		// Wait for total assets indicator with graceful fallback
-		chromedp.ActionFunc(func(c context.Context) error {
+		chromedp.Func(func(c context.Context, t *chromedp.Target) error {
 			waitCtx, cancelWait := context.WithTimeout(c, 15*time.Second)
 			defer cancelWait()
 			sel := "div[class*='HeaderInfo_totalAssetInner'], div[class*='HeaderInfo_totalAsset'], div[class*='HeaderInfo_totalAssetValue']"
-			if err := chromedp.WaitVisible(sel).Do(waitCtx); err != nil {
+			if err := chromedp.Do(waitCtx, chromedp.WaitVisible(sel)); err != nil {
 				log.Printf("Warning: selector %s not visible within 15s: %v. Continuing...", sel, err)
 			}
 			return nil
 		}),
 		// Try unfolding chain breakdown
-		chromedp.Evaluate(unfoldChainsJS, &unfolded),
+		chromedp.Func(func(c context.Context, t *chromedp.Target) error {
+			_, _ = chromedp.Run(c, chromedp.Evaluate[bool](unfoldChainsJS))
+			return nil
+		}),
 		chromedp.Sleep(1 * time.Second),
 		// Trigger smooth scroll to load lazy tokens and protocol cards
-		chromedp.Evaluate(autoScrollJS, nil),
+		chromedp.Func(func(c context.Context, t *chromedp.Target) error {
+			_, _ = chromedp.Run(c, chromedp.Evaluate[chromedp.Void](autoScrollJS))
+			return nil
+		}),
 		chromedp.Sleep(2 * time.Second),
-		// Extract parsed data as JSON string
-		chromedp.Evaluate(fmt.Sprintf("(%s)()", scrapingJS), &rawJSON),
 	}
 
-	if err := chromedp.Run(timeoutCtx, actions...); err != nil {
+	if err := chromedp.Do(timeoutCtx, actions...); err != nil {
 		return nil, fmt.Errorf("chromedp run failed: %w", err)
+	}
+
+	rawJSON, err := chromedp.Run(timeoutCtx, chromedp.Evaluate[string](fmt.Sprintf("(%s)()", scrapingJS)))
+	if err != nil {
+		return nil, fmt.Errorf("chromedp evaluate failed: %w", err)
 	}
 
 	var result ScrapeResult
