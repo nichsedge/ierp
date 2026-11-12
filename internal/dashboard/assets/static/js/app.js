@@ -154,6 +154,7 @@
         place: '',
         from_date: '',
         to_date: '',
+        source: 'life',
         loading: false,
         hasMore: true
       },
@@ -561,6 +562,7 @@
 
         if (tabKey === 'events') {
           if (state.tag) params.set('tag', state.tag);
+          if (state.source) params.set('source', state.source);
           if (state.place) params.set('place', state.place);
           if (state.from_date) params.set('from', state.from_date);
           if (state.to_date) params.set('to', state.to_date);
@@ -659,9 +661,28 @@
     },
 
     // Filter Helpers
+    setEventSource(source) {
+      this.collections.events.source = source;
+      this.resetAndFetch('events');
+    },
+
+    clearEventTag() {
+      this.collections.events.tag = '';
+      this.resetAndFetch('events');
+    },
+
     filterByTag(tag) {
       this.switchTab('events');
-      this.collections.events.tag = tag;
+      if (tag === 'atracker' || tag === 'deepwork') {
+        this.collections.events.source = 'deepwork';
+        this.collections.events.tag = '';
+      } else if (tag === 'timeline' || tag === 'location' || tag === 'visit') {
+        this.collections.events.source = 'timeline';
+        this.collections.events.tag = '';
+      } else {
+        this.collections.events.source = 'all';
+        this.collections.events.tag = tag;
+      }
       this.resetAndFetch('events');
     },
 
@@ -691,12 +712,13 @@
       e.place = '';
       e.from_date = '';
       e.to_date = '';
+      e.source = 'life';
       this.resetAndFetch('events');
     },
 
     hasActiveEventFilters() {
       const e = this.collections.events;
-      return Boolean(e.search || e.tag || e.place || e.from_date || e.to_date);
+      return Boolean(e.search || e.tag || e.place || e.from_date || e.to_date || e.source !== 'life');
     },
 
     toggleVendorFavFilter() {

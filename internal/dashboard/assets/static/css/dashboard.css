@@ -33,7 +33,7 @@ body {
   padding-right: max(16px, calc(16px + env(safe-area-inset-right)));
 }
 
-button, a, select, input, .tab-btn, .tag-pill, .sort-btn, .copy-btn, .fav-btn, .event-card, .contact-card, .media-badge-pill {
+button, a, select, input, .tab-btn, .tag-pill, .sort-btn, .source-pill, .copy-btn, .fav-btn, .event-card, .contact-card, .media-badge-pill {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
@@ -264,6 +264,63 @@ h1 { font-size: 23px; font-weight: 700; letter-spacing: -0.5px; }
   font-size: 12.5px; font-family: 'JetBrains Mono', monospace;
   color: var(--accent-cyan); background: rgba(0, 242, 254, 0.08);
   border: 1px solid rgba(0, 242, 254, 0.25); padding: 4px 10px; border-radius: 12px;
+}
+
+.source-pills-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 14px;
+}
+.source-pills-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+}
+.source-pill {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--card-border);
+  color: var(--text-muted);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+.source-pill:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+}
+.source-pill.active {
+  background: rgba(79, 172, 254, 0.18);
+  border-color: var(--accent-cyan);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 0 12px rgba(79, 172, 254, 0.25);
+}
+.active-tag-chip {
+  background: rgba(168, 85, 247, 0.15);
+  border: 1px solid var(--accent-purple);
+  color: #d8b4fe;
+  padding: 4px 10px;
+  border-radius: 14px;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  transition: background 0.15s ease;
+}
+.active-tag-chip:hover {
+  background: rgba(168, 85, 247, 0.25);
 }
 
 .sort-bar {

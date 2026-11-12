@@ -137,8 +137,9 @@ func sendError(w http.ResponseWriter, status int, msg string) {
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
-	var totalEvents, totalContacts, totalMedia, totalLinks int
+	var totalEvents, totalLifeEvents, totalContacts, totalMedia, totalLinks int
 	_ = s.db.QueryRow("SELECT COUNT(*) FROM events").Scan(&totalEvents)
+	_ = s.db.QueryRow("SELECT COUNT(*) FROM events WHERE (tags IS NULL OR (tags NOT LIKE '%timeline%' AND tags NOT LIKE '%atracker%' AND tags NOT LIKE '%deepwork%'))").Scan(&totalLifeEvents)
 	_ = s.db.QueryRow("SELECT COUNT(*) FROM contacts").Scan(&totalContacts)
 	_ = s.db.QueryRow("SELECT COUNT(*) FROM media_items").Scan(&totalMedia)
 	_ = s.db.QueryRow("SELECT COUNT(*) FROM links").Scan(&totalLinks)
@@ -263,15 +264,16 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	runway, _ := finance.ComputeRunway(s.db)
 
 	sendJSON(w, http.StatusOK, map[string]any{
-		"total_events":   totalEvents,
-		"total_contacts": totalContacts,
-		"total_media":    totalMedia,
-		"total_links":    totalLinks,
-		"monthly_counts": monthlyCounts,
-		"daily_counts":   dailyCounts,
-		"media_summary":  mediaSummary,
-		"top_places":     topPlaces,
-		"top_tags":       topTags,
+		"total_events":      totalEvents,
+		"total_life_events": totalLifeEvents,
+		"total_contacts":    totalContacts,
+		"total_media":       totalMedia,
+		"total_links":       totalLinks,
+		"monthly_counts":    monthlyCounts,
+		"daily_counts":      dailyCounts,
+		"media_summary":     mediaSummary,
+		"top_places":        topPlaces,
+		"top_tags":          topTags,
 		"finance": map[string]any{
 			"liquid_cash":   runway.LiquidCash,
 			"net_worth":     runway.NetWorth,
@@ -287,6 +289,8 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		q := r.URL.Query().Get("q")
 		tag := r.URL.Query().Get("tag")
+		excludeTag := r.URL.Query().Get("exclude_tag")
+		source := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("source")))
 		from := r.URL.Query().Get("from")
 		to := r.URL.Query().Get("to")
 		sortCol := r.URL.Query().Get("sort")
@@ -294,15 +298,38 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 
+		var excludeTags []string
+		if excludeTag != "" {
+			for _, t := range strings.Split(excludeTag, ",") {
+				t = strings.TrimSpace(t)
+				if t != "" {
+					excludeTags = append(excludeTags, t)
+				}
+			}
+		}
+
+		if source == "life" {
+			excludeTags = append(excludeTags, "timeline", "atracker", "deepwork")
+		} else if source == "atracker" || source == "deepwork" {
+			if tag == "" {
+				tag = "atracker"
+			}
+		} else if source == "timeline" || source == "location" {
+			if tag == "" {
+				tag = "timeline"
+			}
+		}
+
 		evs, total, err := events.ListEvents(s.db, events.ListOptions{
-			Query:    q,
-			Tag:      tag,
-			FromDate: from,
-			ToDate:   to,
-			SortCol:  sortCol,
-			SortDir:  dir,
-			Limit:    limit,
-			Offset:   offset,
+			Query:       q,
+			Tag:         tag,
+			ExcludeTags: excludeTags,
+			FromDate:    from,
+			ToDate:      to,
+			SortCol:     sortCol,
+			SortDir:     dir,
+			Limit:       limit,
+			Offset:      offset,
 		})
 		if err != nil {
 			sendError(w, http.StatusInternalServerError, err.Error())

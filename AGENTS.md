@@ -82,6 +82,7 @@ Code in `internal/` is organized by bounded domain services:
 * **FTS5 Full-Text Search Virtual Table**: The `events_fts` external content virtual table indexes timeline events and notes in real-time using automatic SQLite triggers (`events_ai`, `events_ad`, `events_au`) and provides BM25 relevance ranking (`bm25(events_fts)`).
 * **Pure Standard Library Garden Generation**: All markdown notes and YAML frontmatter exports to the Digital Garden must remain standard library string formatting without external template or frontmatter dependencies.
 * **Isolated Cloud Expenses Ingestion**: Real-time incoming email receipt telemetry is ingested into the dedicated `email_expenses` table in Turso Cloud (`events.db`), maintaining clean isolation from core journal and transaction tables. Scripts live in `scripts/gmail_expenses/`.
+* **Telemetry vs. Life Events Stream Isolation**: Automated streams (Atracker deep work blocks via `atracker`/`deepwork`, Google Timeline visits via `timeline`/`location`) are decoupled from human milestone events using `ListOptions.ExcludeTags` or `source=life`. Dashboard UI and CLI (`ierp list -life`, `--exclude-tag`, `--source`) default to isolating real-world life and social events while allowing instant toggling across telemetry streams.
 
 ---
 

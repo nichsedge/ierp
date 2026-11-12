@@ -92,3 +92,72 @@ func TestEventsCRUDAndFTS5(t *testing.T) {
 		t.Errorf("expected 0 matches after delete, got %d", len(afterDelete))
 	}
 }
+
+func TestListEventsExcludeTags(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test_events_filter.db")
+
+	if err := db.InitDB(dbPath, false); err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer database.Close()
+
+	// 1. Life event
+	_, _, err = events.InsertEvent(database, events.Event{
+		Title:     "Dinner with Friends",
+		StartDate: "2026-11-01",
+		Tags:      []string{"social", "dinner"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("InsertEvent life failed: %v", err)
+	}
+
+	// 2. Google Timeline event
+	_, _, err = events.InsertEvent(database, events.Event{
+		Title:     "Visit to Coffee Shop",
+		StartDate: "2026-11-02",
+		Tags:      []string{"timeline", "visit", "jakarta"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("InsertEvent timeline failed: %v", err)
+	}
+
+	// 3. Atracker deepwork event
+	_, _, err = events.InsertEvent(database, events.Event{
+		Title:     "Deep Work: Coding",
+		StartDate: "2026-11-03",
+		Tags:      []string{"deepwork", "focus", "atracker"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("InsertEvent atracker failed: %v", err)
+	}
+
+	// All events
+	allEvs, totalAll, err := events.ListEvents(database, events.ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListEvents all failed: %v", err)
+	}
+	if totalAll != 3 || len(allEvs) != 3 {
+		t.Fatalf("expected 3 total events, got %d", totalAll)
+	}
+
+	// Exclude timeline & atracker (Life filter)
+	lifeEvs, totalLife, err := events.ListEvents(database, events.ListOptions{
+		Limit:       10,
+		ExcludeTags: []string{"timeline", "atracker", "deepwork"},
+	})
+	if err != nil {
+		t.Fatalf("ListEvents life filter failed: %v", err)
+	}
+	if totalLife != 1 || len(lifeEvs) != 1 {
+		t.Fatalf("expected 1 life event, got total=%d len=%d", totalLife, len(lifeEvs))
+	}
+	if lifeEvs[0].Title != "Dinner with Friends" {
+		t.Errorf("expected 'Dinner with Friends', got %q", lifeEvs[0].Title)
+	}
+}

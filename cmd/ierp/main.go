@@ -351,16 +351,44 @@ func handleListEvents(args []string) {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
 	limit := fs.Int("limit", 20, "Max events to list")
 	tag := fs.String("tag", "", "Filter by tag")
+	excludeTag := fs.String("exclude-tag", "", "Exclude events with this tag (comma-separated)")
+	life := fs.Bool("life", false, "Show only personal/life events (exclude automated telemetry: timeline, atracker)")
+	source := fs.String("source", "", "Filter by source preset: life, deepwork/atracker, timeline/location, all")
 	query := fs.String("q", "", "Filter by query")
 	_ = fs.Parse(args)
 
 	database := openDB()
 	defer database.Close()
 
+	var excludeTags []string
+	if *excludeTag != "" {
+		for _, t := range strings.Split(*excludeTag, ",") {
+			t = strings.TrimSpace(t)
+			if t != "" {
+				excludeTags = append(excludeTags, t)
+			}
+		}
+	}
+
+	filterTag := *tag
+	src := strings.ToLower(strings.TrimSpace(*source))
+	if *life || src == "life" {
+		excludeTags = append(excludeTags, "timeline", "atracker", "deepwork")
+	} else if src == "atracker" || src == "deepwork" {
+		if filterTag == "" {
+			filterTag = "atracker"
+		}
+	} else if src == "timeline" || src == "location" {
+		if filterTag == "" {
+			filterTag = "timeline"
+		}
+	}
+
 	evs, total, err := events.ListEvents(database, events.ListOptions{
-		Limit: *limit,
-		Tag:   *tag,
-		Query: *query,
+		Limit:       *limit,
+		Tag:         filterTag,
+		ExcludeTags: excludeTags,
+		Query:       *query,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%sError: %v%s\n", config.Red, err, config.Reset)

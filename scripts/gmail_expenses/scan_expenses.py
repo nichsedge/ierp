@@ -305,7 +305,11 @@ def main():
 
     creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
     if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
+        try:
+            creds.refresh(Request())
+        except Exception as e:
+            print(f"❌ Token refresh failed ({e}). Run watch.py to re-authenticate:\n  uv run ~/Projects/ierp/scripts/gmail_expenses/watch.py")
+            sys.exit(1)
     service = build("gmail", "v1", credentials=creds)
 
     print("🔍 Scanning Gmail inbox for expenses in November 2026...")

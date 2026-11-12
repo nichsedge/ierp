@@ -134,7 +134,7 @@ ierp dashboard --port 8921
 | `ierp skills` | List capability inventory skills (`--type`, `--json`). |
 | `ierp audit` | Scan entire ERP for missing data, overdue items, and actionable next steps. |
 | `ierp insert` | Insert a structured journal event (`--title`, `--place`, `--start`, `--tags`, `--contacts`). |
-| `ierp list` | List recent events with filters (`--limit`, `--tag`, `--q`). |
+| `ierp list` | List recent events with filters (`--limit`, `--tag`, `--life`, `--exclude-tag`, `--source`, `--q`). |
 | `ierp search "<query>"` | Fast SQLite FTS5 full-text search with BM25 relevance ranking and note snippets. |
 | `ierp export-garden` | Export projects, decisions, reviews, and gadgets to Digital Garden markdown notes. |
 | `ierp export-commerce` | Export payment accounts and referral links to `pay.json` and `referrals.json`. |

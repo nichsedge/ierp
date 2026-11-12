@@ -95,14 +95,15 @@ func InsertEvent(database *sql.DB, ev Event, contactRefs []string) (int, []strin
 
 // ListOptions specifies parameters for listing events.
 type ListOptions struct {
-	Query    string
-	Tag      string
-	FromDate string
-	ToDate   string
-	Limit    int
-	Offset   int
-	SortCol  string
-	SortDir  string
+	Query       string
+	Tag         string
+	ExcludeTags []string
+	FromDate    string
+	ToDate      string
+	Limit       int
+	Offset      int
+	SortCol     string
+	SortDir     string
 }
 
 // ListEvents queries events with filtering and pagination.
@@ -125,6 +126,14 @@ func ListEvents(database *sql.DB, opts ListOptions) ([]Event, int, error) {
 	if opts.Tag != "" {
 		whereClauses = append(whereClauses, "e.tags LIKE ?")
 		params = append(params, "%"+opts.Tag+"%")
+	}
+
+	for _, ex := range opts.ExcludeTags {
+		ex = strings.TrimSpace(ex)
+		if ex != "" {
+			whereClauses = append(whereClauses, "(e.tags IS NULL OR e.tags NOT LIKE ?)")
+			params = append(params, "%"+ex+"%")
+		}
 	}
 
 	if opts.FromDate != "" {

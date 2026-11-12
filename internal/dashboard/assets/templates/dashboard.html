@@ -56,6 +56,9 @@
       <div class="stat-card">
         <div class="stat-label">Total Events</div>
         <div class="stat-value">{{ stats.total_events || '-' }}</div>
+        <div class="stat-sub" v-if="stats.total_life_events != null" style="font-size:11.5px; color:var(--accent-cyan); margin-top:4px;">
+          🌟 {{ stats.total_life_events }} Life / {{ stats.total_events }} Total
+        </div>
         <div class="stat-icon">📅</div>
       </div>
       <div class="stat-card">
@@ -217,6 +220,26 @@
   <!-- TIMELINE EVENTS TAB -->
   <div id="tab-events" v-if="activeTab === 'events'">
     <div class="toolbar-section">
+      <!-- Source Filter Pills -->
+      <div class="source-pills-row">
+        <span class="source-pills-label">Stream:</span>
+        <button :class="['source-pill', { active: collections.events.source === 'life' }]" @click="setEventSource('life')">
+          🌟 Life & Social
+        </button>
+        <button :class="['source-pill', { active: collections.events.source === 'deepwork' }]" @click="setEventSource('deepwork')">
+          🧠 Deep Work (Atracker)
+        </button>
+        <button :class="['source-pill', { active: collections.events.source === 'timeline' }]" @click="setEventSource('timeline')">
+          📍 Location (Google Timeline)
+        </button>
+        <button :class="['source-pill', { active: collections.events.source === 'all' }]" @click="setEventSource('all')">
+          🌐 All
+        </button>
+        <span v-if="collections.events.tag" class="active-tag-chip" @click="clearEventTag" title="Click to clear tag filter">
+          #{{ collections.events.tag }} <span style="font-weight:700; margin-left:4px;">✕</span>
+        </span>
+      </div>
+
       <div class="filter-row">
         <div class="search-input-wrap">
           <input type="text" 

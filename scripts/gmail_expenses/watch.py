@@ -41,19 +41,31 @@ def get_gmail_service():
             creds = None
 
     if not creds or not creds.valid:
+        refreshed = False
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+                refreshed = True
+            except Exception as err:
+                print(f"⚠️ Refresh token gagal/kadaluarsa ({err}). Membuka browser untuk re-autentikasi...")
+                creds = None
+
+        if not refreshed:
             client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
             client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
 
             if not client_id or not client_secret:
-                print("❌ Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET.")
-                print("\nSilakan export dua variabel ini dari OAuth Client ID project ichsanul-dev kamu:")
-                print("  export GOOGLE_CLIENT_ID=\"<your-client-id>.apps.googleusercontent.com\"")
-                print("  export GOOGLE_CLIENT_SECRET=\"<your-client-secret>\"")
-                print("\nLalu jalankan kembali script ini:")
-                print("  uv run ~/Projects/ierp/scripts/gmail_expenses/watch.py\n")
+                if TOKEN_FILE.exists():
+                    try:
+                        with open(TOKEN_FILE, "r", encoding="utf-8") as f:
+                            saved = json.load(f)
+                            client_id = client_id or saved.get("client_id", "").strip()
+                            client_secret = client_secret or saved.get("client_secret", "").strip()
+                    except Exception:
+                        pass
+
+            if not client_id or not client_secret:
+                print("❌ Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET in environment / .gmail_token.json.")
                 sys.exit(1)
 
             client_config = {
@@ -75,11 +87,11 @@ def get_gmail_service():
         with open(TOKEN_FILE, "w", encoding="utf-8") as f:
             f.write(creds.to_json())
 
-    return build("gmail", "v1", credentials=creds)
+    return build("gmail", "v1", credentials=creds), creds
 
 def main():
     print(f"🔗 Setting up Gmail watch on topic: {TOPIC_NAME}...")
-    service = get_gmail_service()
+    service, creds = get_gmail_service()
 
     request_body = {
         "topicName": TOPIC_NAME,
@@ -92,6 +104,24 @@ def main():
         print(f"  • History ID : {response.get('historyId')}")
         print(f"  • Expiration : {response.get('expiration')} (aktif ~7 hari)")
         print("\nSekarang setiap email baru masuk di inbox Gmail, sinyalnya akan dipush ke Pub/Sub!")
+
+        if creds and creds.refresh_token:
+            print(f"\n🔑 Refresh Token: {creds.refresh_token[:15]}... (lengkap tersimpan di {TOKEN_FILE})")
+            print("🔄 Memperbarui Cloud Run service 'gmail-expenses-worker'...")
+            import subprocess
+            try:
+                cmd = [
+                    "gcloud", "run", "services", "update", "gmail-expenses-worker",
+                    "--region=us-central1",
+                    f"--update-env-vars=GOOGLE_REFRESH_TOKEN={creds.refresh_token}"
+                ]
+                res = subprocess.run(cmd, capture_output=True, text=True)
+                if res.returncode == 0:
+                    print("✅ Cloud Run berhasil diupdate dengan Refresh Token baru!")
+                else:
+                    print(f"⚠️ Gagal update Cloud Run: {res.stderr.strip()}")
+            except Exception as e:
+                print(f"⚠️ Error updating Cloud Run: {e}")
     except Exception as err:
         print(f"❌ Error saat memanggil users.watch(): {err}")
         sys.exit(1)
