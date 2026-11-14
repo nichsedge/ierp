@@ -49,5 +49,8 @@ uv run ~/Projects/ierp/scripts/gmail_expenses/test_pipeline.py
 ```
 
 ### 4. Merchant Rules & Parsing Normalization
-Tabel `merchant_rules` di Turso Cloud digunakan untuk normalisasi merchant dan kategori (misal `klik indomaret` / `indomaret` -> `Indomaret` dengan kategori `Food`). Parser transaksi email memotong footer promosi Kredivo (`Shop at Shopee`, dsb.) agar merchant asli seperti `Nama Merchant: KLIK INDOMARET` terdeteksi secara akurat.
+Tabel `merchant_rules` di Turso Cloud digunakan untuk normalisasi merchant dan kategori (misal `klik indomaret` / `indomaret` -> `Indomaret` dengan kategori `Food`, serta `traveloka` / `travelokapay` -> `Traveloka` kategori `Travel`). Parser transaksi email mendukung ekstraksi cerdas multi-provider:
+- **Kredivo**: Memotong footer promosi (`Shop at Shopee`, dsb.) agar merchant asli seperti `Nama Merchant: KLIK INDOMARET` terdeteksi secara akurat.
+- **TravelokaPay & TPayLater**: Mengekstrak detail booking dari baris deskripsi item (nama hotel, tiket atraksi, penerbangan), metode pembayaran wallet digital (`GoPay`, `OVO`, dsb.), dan format angka IDR baik berpembatas ribuan (`IDR 302.680`) maupun integer polos (`IDR 327162`).
+- **Krom Bank & Bareksa**: Mengekstrak transaksi QRIS merchant serta imbal hasil kupon SBN otomatis.
 

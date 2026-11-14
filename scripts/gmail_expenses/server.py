@@ -168,7 +168,10 @@ def apply_merchant_rule(merchant: str, text: str = "") -> tuple[str, str]:
     haystack = f"{merchant} {text}".lower()
     for r in rules:
         if r["pattern"] in haystack:
-            clean = r["clean_merchant"] or merchant
+            if m_lower in ("unknown", "misc", "kredivo merchant", ""):
+                clean = r["clean_merchant"] or merchant
+            else:
+                clean = merchant
             return clean, r["category"]
     return merchant, "Misc"
 
@@ -401,6 +404,109 @@ def parse_financial_transaction(msg_id: str, headers: dict, raw_body: str, snipp
                     amount = float(m.group(1).replace(".", "").replace(",", "."))
                     break
 
+    # Traveloka / TravelokaPay / TPayLater
+    elif "travelokapay" in sender.lower() or "travelokapay" in subject.lower() or "tpaylater" in sender.lower() or ("traveloka.com" in sender.lower() and any(k in (subject + " " + snippet).lower() for k in ["digital wallet transaction successful", "tpaylater payment details"])):
+        payment_method = "TravelokaPay"
+        category = "Travel"
+        merchant = "Traveloka"
+
+        is_tpaylater = "tpaylater" in sender.lower() or "tpaylater" in subject.lower()
+        if is_tpaylater:
+            payment_method = "TPayLater"
+        else:
+            m_pm = re.search(r"purchase with\s+([A-Za-z0-9/\s&]+?)\s+is successful", full_text, re.IGNORECASE)
+            if m_pm:
+                payment_method = f"TravelokaPay ({m_pm.group(1).strip()})"
+
+        # 1. Total Amount line extraction
+        for idx, l in enumerate(lines):
+            clean_l = l.strip().lower()
+            if clean_l in ("total amount", "total:", "total amount:"):
+                for offset in [1, 2]:
+                    if idx + offset < len(lines):
+                        cand_line = lines[idx + offset].strip()
+                        m_pun = re.search(r"(?:IDR|Rp)\.?\s*([0-9]{1,3}(?:\.[0-9]{3})+(?:,[0-9]+)?)", cand_line, re.IGNORECASE)
+                        if m_pun:
+                            try:
+                                amount = float(m_pun.group(1).replace(".", "").replace(",", "."))
+                                break
+                            except ValueError:
+                                pass
+                        m_raw = re.search(r"(?:IDR|Rp)?\s*([0-9]{4,})", cand_line, re.IGNORECASE)
+                        if m_raw:
+                            try:
+                                amount = float(m_raw.group(1))
+                                break
+                            except ValueError:
+                                pass
+                if amount > 0:
+                    break
+            elif any(clean_l.startswith(k) for k in ["total amount", "total:"]):
+                m_pun = re.search(r"(?:IDR|Rp)\.?\s*([0-9]{1,3}(?:\.[0-9]{3})+(?:,[0-9]+)?)", l, re.IGNORECASE)
+                if m_pun:
+                    try:
+                        amount = float(m_pun.group(1).replace(".", "").replace(",", "."))
+                    except ValueError:
+                        pass
+                if amount == 0.0:
+                    m_raw = re.search(r"(?:IDR|Rp)?\s*([0-9]{4,})", l, re.IGNORECASE)
+                    if m_raw:
+                        try:
+                            amount = float(m_raw.group(1))
+                        except ValueError:
+                            pass
+                if amount > 0:
+                    break
+
+        # 2. Fallback amount from purchase line or snippet
+        if amount == 0.0:
+            m_amt = re.search(r"(?:IDR|Rp)\.?\s*([0-9]{1,3}(?:\.[0-9]{3})+(?:,[0-9]+)?|[0-9]{4,})\s*(?:purchase|PayLater bill)", full_text, re.IGNORECASE)
+            if m_amt:
+                raw_amt = m_amt.group(1).replace(".", "").replace(",", ".")
+                try:
+                    amount = float(raw_amt)
+                except ValueError:
+                    pass
+
+        if amount == 0.0:
+            m_amt = re.search(r"(?:IDR|Rp)\.?\s*([0-9]{1,3}(?:\.[0-9]{3})+(?:,[0-9]+)?|[0-9]{4,})", snippet + " " + full_text, re.IGNORECASE)
+            if m_amt:
+                raw_amt = m_amt.group(1).replace(".", "").replace(",", ".")
+                try:
+                    amount = float(raw_amt)
+                except ValueError:
+                    pass
+
+        # 3. Extract Merchant / Item Description
+        for idx, l in enumerate(lines):
+            clean_l = l.strip().lower()
+            if clean_l in ("description", "description:") and idx + 1 < len(lines):
+                cand_desc = lines[idx + 1].strip()
+                if cand_desc and not any(k in cand_desc.lower() for k in ["total", "amount", "status", "payment", "idr"]):
+                    merchant = cand_desc
+                    break
+            elif clean_l.startswith("description"):
+                cand_desc = re.sub(r"(?i)^description\s*[:\s]\s*", "", l).strip()
+                if cand_desc and cand_desc.lower() != "description":
+                    merchant = cand_desc
+                    break
+
+        merchant = re.sub(r"\s+\d{1,2}-[A-Za-z]{3}-\d{4}.*$", "", merchant).strip()
+
+        if "bill payment" in subject.lower() or "bills payment" in full_text.lower():
+            merchant = "TPayLater Bill Payment"
+            category = "Utility"
+
+        # Categorize
+        m_lower = merchant.lower()
+        full_lower = full_text.lower()
+        if any(k in m_lower or k in full_lower for k in ["hotel", "resort", "inn", "capsule", "hostel", "villa"]):
+            category = "Travel"
+        elif any(k in m_lower or k in full_lower for k in ["flight", "pesawat", "kereta", "train", "citilink", "garuda", "lion", "transnusa", "airasia"]):
+            category = "Transport"
+        elif any(k in m_lower or k in full_lower for k in ["dance", "ticket to", "tiket", "kecak", "tour", "atraksi", "cinema", "bioskop"]):
+            category = "Entertainment"
+
     # Generic Fallback
     elif any(k in (sender + " " + subject).lower() for k in ["pembayaran berhasil", "transaksi berhasil", "payment receipt", "gopay", "shopeepay"]):
         m = re.search(r"(?:rp|idr)\.?\s*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?)", snippet + " " + full_text, re.IGNORECASE)
@@ -410,7 +516,7 @@ def parse_financial_transaction(msg_id: str, headers: dict, raw_body: str, snipp
                 amount = float(raw_val)
             except ValueError:
                 amount = 0.0
-        for brand in ["GoPay", "ShopeePay", "Shopee", "Tokopedia", "Grab", "Gojek", "BCA", "Mandiri", "Jenius", "Bank Jago", "Steam", "Spotify", "Netflix"]:
+        for brand in ["GoPay", "ShopeePay", "Shopee", "Tokopedia", "Grab", "Gojek", "BCA", "Mandiri", "Jenius", "Bank Jago", "Steam", "Spotify", "Netflix", "Traveloka"]:
             if brand.lower() in (sender + " " + subject).lower():
                 merchant = brand
                 payment_method = brand

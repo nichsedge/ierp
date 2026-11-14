@@ -186,8 +186,32 @@ def parse_expense_heuristic(text: str, subject: str = "", sender: str = "") -> d
                 merchant = "PLN Listrik"
                 category = "Bills & Utilities"
 
+    # Specific Traveloka / TravelokaPay handling
+    if "travelokapay" in sender.lower() or "travelokapay" in subject.lower() or "tpaylater" in sender.lower() or ("traveloka.com" in sender.lower() and any(k in (subject + " " + pruned_text).lower() for k in ["digital wallet transaction successful", "tpaylater payment details"])):
+        payment_method = "TravelokaPay"
+        category = "Travel"
+        merchant = "Traveloka"
+        is_tpaylater = "tpaylater" in sender.lower() or "tpaylater" in subject.lower()
+        if is_tpaylater:
+            payment_method = "TPayLater"
+        else:
+            m_pm = re.search(r"purchase with\s+([A-Za-z0-9/\s&]+?)\s+is successful", pruned_text, re.IGNORECASE)
+            if m_pm:
+                payment_method = f"TravelokaPay ({m_pm.group(1).strip()})"
+        m_desc = re.search(r"Description\s*[:\s]\s*([A-Za-z0-9\s&@.-]+)", pruned_text, re.IGNORECASE)
+        if m_desc:
+            cand = m_desc.group(1).strip()
+            if not any(k in cand.lower() for k in ["total", "amount", "status", "payment", "idr"]):
+                merchant = re.sub(r"\s+\d{1,2}-[A-Za-z]{3}-\d{4}.*$", "", cand).strip()
+        m_raw = re.search(r"(?:IDR|Rp)?\s*([0-9]{4,})", pruned_text, re.IGNORECASE)
+        if m_raw and amount == 0.0:
+            try:
+                amount = float(m_raw.group(1))
+            except ValueError:
+                pass
+
     if merchant == "Unknown":
-        for brand in ["GoPay", "ShopeePay", "Shopee", "Tokopedia", "Grab", "Gojek", "BCA", "Mandiri", "Jenius", "Bank Jago", "Steam", "Spotify", "Netflix", "Google Play"]:
+        for brand in ["GoPay", "ShopeePay", "Shopee", "Tokopedia", "Grab", "Gojek", "BCA", "Mandiri", "Jenius", "Bank Jago", "Steam", "Spotify", "Netflix", "Google Play", "Traveloka"]:
             if brand.lower() in (sender + " " + subject + " " + pruned_text).lower():
                 merchant = brand
                 if merchant in ["GoPay", "ShopeePay", "BCA", "Jenius", "Bank Jago"]:
