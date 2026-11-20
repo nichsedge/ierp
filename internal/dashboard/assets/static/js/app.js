@@ -252,6 +252,15 @@
       status: '',
       loading: false
     },
+    expenses: {
+      items: [],
+      total: 0,
+      summary: null,
+      month: '',
+      category: '',
+      tag: '',
+      loading: false
+    },
     radar: {
       items: [],
       total: 0,
@@ -298,7 +307,7 @@
 
     // Lifecycle Init
     init() {
-      const VALID_TABS = ['overview', 'events', 'contacts', 'projects', 'decisions', 'radar', 'lifeops', 'media', 'vendors', 'links', 'places', 'commerce'];
+      const VALID_TABS = ['overview', 'events', 'contacts', 'projects', 'decisions', 'radar', 'lifeops', 'expenses', 'media', 'vendors', 'links', 'places', 'commerce'];
       const hashTab = window.location.hash ? window.location.hash.replace('#', '') : '';
       const initialTab = VALID_TABS.includes(hashTab) ? hashTab : 'overview';
       this.switchTab(initialTab, false);
@@ -355,6 +364,8 @@
         if (this.radar.items.length === 0) this.loadRadar();
       } else if (tabName === 'lifeops') {
         if (this.lifeops.maintenance.length === 0) this.loadLifeOps();
+      } else if (tabName === 'expenses') {
+        if (this.expenses.items.length === 0) this.loadExpenses();
       } else if (tabName === 'places') {
         if (this.places.items.length === 0) {
           this.loadPlaces();
@@ -798,6 +809,45 @@
         this.showToast('Failed to load projects');
       } finally {
         this.projects.loading = false;
+      }
+    },
+
+    // Expenses Loader
+    async loadExpenses(month = '', category = '', tag = '') {
+      this.expenses.month = month;
+      this.expenses.category = category;
+      this.expenses.tag = tag;
+      this.expenses.loading = true;
+      try {
+        const params = new URLSearchParams();
+        if (month) params.set('month', month);
+        if (category) params.set('category', category);
+        if (tag) params.set('tag', tag);
+        const res = await fetch('/api/expenses?' + params.toString());
+        const data = await res.json();
+        this.expenses.items = data.items || [];
+        this.expenses.total = data.total || 0;
+        this.expenses.summary = data.summary || null;
+      } catch (err) {
+        console.error('Failed to load expenses:', err);
+        this.showToast('Failed to load expenses');
+      } finally {
+        this.expenses.loading = false;
+      }
+    },
+
+    async deleteExpense(id) {
+      if (!confirm(`Delete expense #${id}?`)) return;
+      try {
+        const res = await fetch(`/api/expenses/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          this.showToast('Expense deleted');
+          this.loadExpenses(this.expenses.month, this.expenses.category, this.expenses.tag);
+        } else {
+          this.showToast('Failed to delete expense');
+        }
+      } catch (err) {
+        this.showToast('Network error deleting expense');
       }
     },
 

@@ -52,6 +52,7 @@ Code in `internal/` is organized by bounded domain services:
 | `internal/contacts`| CRM contact management, insertion, name/ID resolution, tier assignment | `contacts` |
 | `internal/radar` | Dunbar relationship tiers (14d/60d/180d) and daily reconnection engine | `contacts`, `events` |
 | `internal/finance` | Net worth snapshots, recurring burn commitments, sovereign runway computation, and snapshot deviation guard | `networth_snapshots`, `recurring_commitments` |
+| `internal/expenses`| Daily cash expenses, travelogue markdown table & JSON ingestion, category totals | `expenses` |
 | `internal/lifeops` | Preventive maintenance, due-date tracking, and recurring auto-rescheduling | `maintenance_items` |
 | `internal/projects`| Strategic initiative tracking and event linking | `projects` |
 | `internal/decisions`| Decision journal, confidence calibration, and retrospective review tracking | `decisions` |

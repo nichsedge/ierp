@@ -83,6 +83,11 @@ ierp insert-decision --title "Accept Retainer Contract" --choice "Accept" --conf
 ierp insert-snapshot --liquid 100000000 --investments 250000000 --assets 40000000
 ierp insert-commitment --name "Apartment Rent" --amount 6000000 --frequency monthly --category housing
 
+# Record expenses or batch-ingest from Markdown story / JSON
+ierp expense add --title "TransNusa SG" --amount 2800000 --category flights --tags "travel,singapore"
+ierp expense ingest "~/Projects/digital-graveyard/content/Write/Two Days in Singapore.md" --tag "singapore"
+ierp expense summary --month 2026-11
+
 # Schedule a life ops maintenance task
 ierp insert-maintenance --name "Motorbike Servicing" --due-date "2026-11-01" --interval 90 --category vehicle
 
@@ -111,6 +116,11 @@ ierp dashboard --port 8921
 | `ierp snapshots` | List historical net worth balance snapshots. |
 | `ierp insert-commitment` | Record a recurring burn commitment (`--name`, `--amount`, `--frequency`, `--category`). |
 | `ierp commitments` | List recurring financial commitments and monthly normalized burn. |
+| `ierp expense add` | Record an expense transaction (`--title`, `--amount`, `--category`, `--date`, `--currency`, `--tags`). |
+| `ierp expense list` | List recent expenses with filters (`--limit`, `--category`, `--tag`, `--month`, `--json`). |
+| `ierp expense summary` | Aggregated expense summary and category breakdown (`--month`, `--start`, `--end`, `--json`). |
+| `ierp expense ingest <file>` | Ingest expenses directly from Markdown travelogue tables or JSON snapshot files (`--tag`). |
+| `ierp expense delete --id <ID>` | Permanently remove an expense record. |
 | `ierp insert-project` | Create a strategic initiative (`--title`, `--slug`, `--priority`, `--target`). |
 | `ierp projects` | List projects. |
 | `ierp insert-decision` | Record a choice in the decision journal (`--title`, `--choice`, `--confidence`, `--review-date`). |

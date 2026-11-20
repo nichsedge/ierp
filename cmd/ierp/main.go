@@ -22,6 +22,7 @@ import (
 	"github.com/nichsedge/ierp/internal/db"
 	"github.com/nichsedge/ierp/internal/decisions"
 	"github.com/nichsedge/ierp/internal/events"
+	"github.com/nichsedge/ierp/internal/expenses"
 	"github.com/nichsedge/ierp/internal/finance"
 	"github.com/nichsedge/ierp/internal/gadgets"
 	"github.com/nichsedge/ierp/internal/garden"
@@ -83,6 +84,12 @@ func main() {
 		handleInsertCommitment(args)
 	case "commitments":
 		handleListCommitments(args)
+	case "expense", "expenses":
+		handleExpenses(args)
+	case "insert-expense":
+		handleInsertExpense(args)
+	case "ingest-expenses", "ingest-expense":
+		handleIngestExpenses(args)
 	case "runway":
 		handleRunway(args)
 	case "insert-maintenance":
@@ -209,6 +216,10 @@ func printUsage() {
 	fmt.Println("  snapshots            List net worth balance snapshots")
 	fmt.Println("  insert-commitment    Record a recurring fixed burn expense")
 	fmt.Println("  commitments          List recurring financial commitments")
+	fmt.Println("  expense              Expense tracking (add, list, summary, ingest, delete)")
+	fmt.Println("  insert-expense       Record a single expense transaction")
+	fmt.Println("  expenses             List recent expense transactions")
+	fmt.Println("  ingest-expenses      Ingest expenses from Markdown story or JSON")
 	fmt.Println("  runway               Calculate sovereign runway and wealth metrics")
 	fmt.Println("  r2                   Cloudflare R2 sync (status, push, pull, auto)")
 	fmt.Println("  sync portfolio       Ingest latest multi-asset portfolio snapshot & runway")
@@ -2087,4 +2098,248 @@ func handleListSkills(args []string) {
 	for _, s := range skills {
 		fmt.Printf("#%-3d | %-24s | %-6s | %-8s | %s\n", s.ID, s.Skill, s.SkillType, s.Status, s.DateLogged)
 	}
+}
+
+func truncateStr(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return s[:maxLen]
+	}
+	return s[:maxLen-3] + "..."
+}
+
+func handleExpenses(args []string) {
+	if len(args) == 0 {
+		handleListExpenses(nil)
+		return
+	}
+
+	sub := args[0]
+	subArgs := args[1:]
+
+	switch sub {
+	case "add", "insert":
+		handleInsertExpense(subArgs)
+	case "list":
+		handleListExpenses(subArgs)
+	case "summary", "stats":
+		handleExpenseSummary(subArgs)
+	case "ingest", "import":
+		handleIngestExpenses(subArgs)
+	case "delete", "rm":
+		handleDeleteExpense(subArgs)
+	default:
+		if strings.HasPrefix(sub, "-") {
+			handleListExpenses(args)
+		} else {
+			fmt.Fprintf(os.Stderr, "%sUnknown expenses subcommand: %s%s\n", config.Red, sub, config.Reset)
+			fmt.Println("Usage: ierp expense [add|list|summary|ingest|delete] [flags]")
+			os.Exit(1)
+		}
+	}
+}
+
+func handleInsertExpense(args []string) {
+	fs := flag.NewFlagSet("expense add", flag.ExitOnError)
+	title := fs.String("title", "", "Expense title / merchant / item (required)")
+	amount := fs.Float64("amount", 0, "Expense amount (required)")
+	cat := fs.String("category", "general", "Category (food, transport, flights, lodging, utilities, shopping, etc.)")
+	date := fs.String("date", "", "Date (YYYY-MM-DD, default today)")
+	cur := fs.String("currency", "IDR", "Currency (IDR, SGD, USD)")
+	acc := fs.String("account", "", "Payment account (e.g. Octo CIMB, BCA, Cash)")
+	notes := fs.String("notes", "", "Notes / description")
+	tags := fs.String("tags", "", "Comma-separated tags (e.g. travel,singapore)")
+	_ = fs.Parse(args)
+
+	if *title == "" || *amount <= 0 {
+		fmt.Fprintf(os.Stderr, "%sError: --title and --amount (>0) are required%s\n", config.Red, config.Reset)
+		os.Exit(1)
+	}
+
+	database := openDB()
+	defer database.Close()
+
+	id, err := expenses.InsertExpense(database, expenses.Expense{
+		Title:    *title,
+		Amount:   *amount,
+		Category: *cat,
+		Date:     *date,
+		Currency: *cur,
+		Account:  *acc,
+		Notes:    *notes,
+		Tags:     *tags,
+		Source:   "cli",
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+
+	fmt.Printf("%sRecorded expense #%d: %s | %s %.2f (%s)%s\n",
+		config.Green, id, *title, strings.ToUpper(*cur), *amount, strings.ToLower(*cat), config.Reset)
+}
+
+func handleListExpenses(args []string) {
+	fs := flag.NewFlagSet("expense list", flag.ExitOnError)
+	limit := fs.Int("limit", 30, "Max items to display")
+	cat := fs.String("category", "", "Filter by category")
+	tag := fs.String("tag", "", "Filter by tag")
+	month := fs.String("month", "", "Filter by month (YYYY-MM)")
+	start := fs.String("start", "", "Filter by start date (YYYY-MM-DD)")
+	end := fs.String("end", "", "Filter by end date (YYYY-MM-DD)")
+	jsonOut := fs.Bool("json", false, "Output JSON")
+	_ = fs.Parse(args)
+
+	database := openDB()
+	defer database.Close()
+
+	items, err := expenses.ListExpenses(database, expenses.ListOptions{
+		Limit:     *limit,
+		Category:  *cat,
+		Tag:       *tag,
+		Month:     *month,
+		StartDate: *start,
+		EndDate:   *end,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+
+	if *jsonOut {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(items)
+		return
+	}
+
+	fmt.Printf("%s=== Expenses (%d records) ===%s\n", config.Bold, len(items), config.Reset)
+	if len(items) == 0 {
+		fmt.Println("  (No expense records found matching criteria)")
+		return
+	}
+
+	var totalIDR float64
+	for _, e := range items {
+		if e.Currency == "IDR" {
+			totalIDR += e.Amount
+		}
+		tagStr := ""
+		if e.Tags != "" {
+			tagStr = fmt.Sprintf(" [%s]", e.Tags)
+		}
+		fmt.Printf("#%-3d | %s | %-24s | %-10s | %s %12.2f%s\n",
+			e.ID, e.Date, truncateStr(e.Title, 24), e.Category, e.Currency, e.Amount, tagStr)
+	}
+	if totalIDR > 0 {
+		fmt.Printf("\n%sFiltered IDR Total:%s Rp %14.2f\n", config.Bold, config.Reset, totalIDR)
+	}
+}
+
+func handleExpenseSummary(args []string) {
+	fs := flag.NewFlagSet("expense summary", flag.ExitOnError)
+	month := fs.String("month", "", "Month to summarize (YYYY-MM, default current month)")
+	start := fs.String("start", "", "Start date (YYYY-MM-DD)")
+	end := fs.String("end", "", "End date (YYYY-MM-DD)")
+	jsonOut := fs.Bool("json", false, "Output JSON")
+	_ = fs.Parse(args)
+
+	if *month == "" && *start == "" && *end == "" {
+		*month = time.Now().Format("2006-01")
+	}
+
+	database := openDB()
+	defer database.Close()
+
+	summary, err := expenses.GetSummary(database, *month, *start, *end)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+
+	if *jsonOut {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(summary)
+		return
+	}
+
+	fmt.Printf("%s=== Expense Summary: %s ===%s\n", config.Bold, summary.Period, config.Reset)
+	fmt.Printf("  Total Recorded: IDR %.2f (%d transactions)\n\n", summary.Total, summary.Count)
+	fmt.Printf("%sCategory Breakdown:%s\n", config.Bold, config.Reset)
+	for _, b := range summary.ByCategory {
+		pct := 0.0
+		if summary.Total > 0 {
+			pct = (b.Total / summary.Total) * 100.0
+		}
+		fmt.Printf("  • %-16s: IDR %12.2f (%2d txs, %5.1f%%)\n", b.Category, b.Total, b.Count, pct)
+	}
+}
+
+func handleIngestExpenses(args []string) {
+	fs := flag.NewFlagSet("expense ingest", flag.ExitOnError)
+	tag := fs.String("tag", "", "Default tag to attach to ingested items (e.g. travel,singapore)")
+	_ = fs.Parse(args)
+
+	remaining := fs.Args()
+	if len(remaining) == 0 {
+		fmt.Fprintf(os.Stderr, "%sUsage: ierp expense ingest <file.md|file.json> [--tag <tag>]%s\n", config.Red, config.Reset)
+		os.Exit(1)
+	}
+
+	targetPath := remaining[0]
+	if strings.HasPrefix(targetPath, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			targetPath = filepath.Join(home, targetPath[2:])
+		}
+	}
+
+	database := openDB()
+	defer database.Close()
+
+	res, err := expenses.IngestFile(database, targetPath, *tag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError ingesting expenses: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+
+	fmt.Printf("%s✅ Successfully ingested %d expenses from %s!%s\n", config.Green, res.Count, res.SourceDoc, config.Reset)
+	fmt.Printf("  Total Amount: IDR %.2f\n\n", res.Total)
+	for _, e := range res.Expenses {
+		fmt.Printf("  • [%s] %-30s: %s %.2f\n", e.Category, truncateStr(e.Title, 30), e.Currency, e.Amount)
+	}
+}
+
+func handleDeleteExpense(args []string) {
+	fs := flag.NewFlagSet("expense delete", flag.ExitOnError)
+	id := fs.Int("id", 0, "Expense ID to delete (required)")
+	_ = fs.Parse(args)
+
+	if *id <= 0 && len(fs.Args()) > 0 {
+		if parsed, err := strconv.Atoi(fs.Args()[0]); err == nil {
+			*id = parsed
+		}
+	}
+
+	if *id <= 0 {
+		fmt.Fprintf(os.Stderr, "%sError: valid --id is required%s\n", config.Red, config.Reset)
+		os.Exit(1)
+	}
+
+	database := openDB()
+	defer database.Close()
+
+	deleted, err := expenses.DeleteExpense(database, *id)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError deleting expense: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+	if !deleted {
+		fmt.Fprintf(os.Stderr, "%sNo expense found with ID %d%s\n", config.Yellow, *id, config.Reset)
+		return
+	}
+
+	fmt.Printf("%sDeleted expense #%d%s\n", config.Green, *id, config.Reset)
 }

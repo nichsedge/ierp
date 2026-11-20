@@ -388,6 +388,21 @@ func InitDB(dbPath string, verbose bool) error {
         updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
 
+    CREATE TABLE IF NOT EXISTS expenses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        title TEXT NOT NULL,
+        amount REAL NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'IDR',
+        category TEXT NOT NULL DEFAULT 'general',
+        account TEXT,
+        notes TEXT,
+        tags TEXT,
+        source TEXT DEFAULT 'manual',
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+
     DROP TABLE IF EXISTS receipts;
     `
 
@@ -447,6 +462,9 @@ func InitDB(dbPath string, verbose bool) error {
     CREATE INDEX IF NOT EXISTS idx_antivision_date ON antivision_items(date_logged);
     CREATE INDEX IF NOT EXISTS idx_role_explorations_status ON role_explorations(status);
     CREATE INDEX IF NOT EXISTS idx_skills_type ON skills_inventory(skill_type);
+    CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date);
+    CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category);
+    CREATE INDEX IF NOT EXISTS idx_expenses_tags ON expenses(tags);
     `
 	if _, err := database.Exec(indexes); err != nil {
 		return fmt.Errorf("failed creating indexes: %w", err)

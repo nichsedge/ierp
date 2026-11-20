@@ -18,6 +18,7 @@ import (
 	"github.com/nichsedge/ierp/internal/contacts"
 	"github.com/nichsedge/ierp/internal/decisions"
 	"github.com/nichsedge/ierp/internal/events"
+	"github.com/nichsedge/ierp/internal/expenses"
 	"github.com/nichsedge/ierp/internal/finance"
 	"github.com/nichsedge/ierp/internal/gadgets"
 	"github.com/nichsedge/ierp/internal/lifeops"
@@ -102,6 +103,8 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/runway", s.handleRunway)
 	mux.HandleFunc("/api/finance/snapshots", s.handleFinanceSnapshots)
 	mux.HandleFunc("/api/finance/commitments", s.handleFinanceCommitments)
+	mux.HandleFunc("/api/expenses", s.handleExpenses)
+	mux.HandleFunc("/api/expenses/", s.handleExpenseItem)
 	mux.HandleFunc("/api/projects", s.handleProjects)
 	mux.HandleFunc("/api/decisions", s.handleDecisions)
 	mux.HandleFunc("/api/decisions/", s.handleDecisionItem)
@@ -625,6 +628,86 @@ func (s *Server) handleFinanceCommitments(w http.ResponseWriter, r *http.Request
 			return
 		}
 		sendJSON(w, http.StatusCreated, map[string]any{"id": id, "status": "created"})
+		return
+	}
+
+	sendError(w, http.StatusMethodNotAllowed, "Method not allowed")
+}
+
+func (s *Server) handleExpenses(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		month := r.URL.Query().Get("month")
+		cat := r.URL.Query().Get("category")
+		tag := r.URL.Query().Get("tag")
+		limit := 50
+		if l := r.URL.Query().Get("limit"); l != "" {
+			if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+				limit = parsed
+			}
+		}
+
+		items, err := expenses.ListExpenses(s.db, expenses.ListOptions{
+			Limit:    limit,
+			Category: cat,
+			Tag:      tag,
+			Month:    month,
+		})
+		if err != nil {
+			sendError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		summary, _ := expenses.GetSummary(s.db, month, "", "")
+
+		sendJSON(w, http.StatusOK, map[string]any{
+			"items":   items,
+			"total":   len(items),
+			"summary": summary,
+		})
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		var exp expenses.Expense
+		if err := json.NewDecoder(r.Body).Decode(&exp); err != nil {
+			sendError(w, http.StatusBadRequest, "Invalid JSON")
+			return
+		}
+		id, err := expenses.InsertExpense(s.db, exp)
+		if err != nil {
+			sendError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		sendJSON(w, http.StatusCreated, map[string]any{"id": id, "status": "created"})
+		return
+	}
+
+	sendError(w, http.StatusMethodNotAllowed, "Method not allowed")
+}
+
+func (s *Server) handleExpenseItem(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 3 {
+		sendError(w, http.StatusBadRequest, "Missing expense ID")
+		return
+	}
+	id, err := strconv.Atoi(parts[2])
+	if err != nil {
+		sendError(w, http.StatusBadRequest, "Invalid expense ID")
+		return
+	}
+
+	if r.Method == http.MethodDelete {
+		ok, err := expenses.DeleteExpense(s.db, id)
+		if err != nil {
+			sendError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !ok {
+			sendError(w, http.StatusNotFound, "Expense not found")
+			return
+		}
+		sendJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 		return
 	}
 
