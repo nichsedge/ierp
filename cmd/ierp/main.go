@@ -54,6 +54,10 @@ func main() {
 	switch cmd {
 	case "init-db":
 		handleInitDB(args)
+	case "add":
+		handleAdd(args)
+	case "event", "events":
+		handleEvents(args)
 	case "insert":
 		handleInsertEvent(args)
 	case "list":
@@ -62,6 +66,8 @@ func main() {
 		handleSearchEvents(args)
 	case "delete", "delete-event":
 		handleDeleteEvent(args)
+	case "ingest-events", "ingest-event":
+		handleIngestEvents(args)
 	case "contacts":
 		handleListContacts(args)
 	case "insert-contact":
@@ -200,10 +206,14 @@ func printUsage() {
 	fmt.Println("Usage: ierp <command> [flags]")
 	fmt.Println("\nCommands:")
 	fmt.Println("  init-db              Initialize SQLite schema, FTS5 virtual table, and triggers")
+	fmt.Println("  event                Event management (add, list, search, ingest, delete)")
+	fmt.Println("  events               Alias for event")
+	fmt.Println("  add                  Generic entity creation wrapper (event, expense, contact, etc.)")
 	fmt.Println("  insert               Log a structured timeline event")
 	fmt.Println("  list                 List recent events with filters")
 	fmt.Println("  search               FTS5 full-text search with BM25 ranking")
 	fmt.Println("  delete               Delete a timeline event by ID")
+	fmt.Println("  ingest-events        Ingest event from Markdown travelogue or JSON")
 	fmt.Println("  contacts             List CRM contacts")
 	fmt.Println("  insert-contact       Record a new CRM contact")
 	fmt.Println("  set-tier             Update Dunbar tier & cadence for a contact")
@@ -276,6 +286,129 @@ func handleInitDB(args []string) {
 	}
 }
 
+func handleEvents(args []string) {
+	if len(args) == 0 {
+		handleListEvents(nil)
+		return
+	}
+
+	sub := args[0]
+	subArgs := args[1:]
+
+	switch sub {
+	case "add", "insert":
+		if len(subArgs) > 0 && (strings.HasSuffix(subArgs[0], ".md") || strings.HasSuffix(subArgs[0], ".json")) {
+			handleIngestEvents(subArgs)
+		} else {
+			handleInsertEvent(subArgs)
+		}
+	case "list":
+		handleListEvents(subArgs)
+	case "search":
+		handleSearchEvents(subArgs)
+	case "ingest", "import":
+		handleIngestEvents(subArgs)
+	case "delete", "rm":
+		handleDeleteEvent(subArgs)
+	default:
+		if strings.HasPrefix(sub, "-") {
+			handleListEvents(args)
+		} else if strings.HasSuffix(sub, ".md") || strings.HasSuffix(sub, ".json") {
+			handleIngestEvents(args)
+		} else {
+			handleInsertEvent(args)
+		}
+	}
+}
+
+func handleAdd(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintf(os.Stderr, "%sUsage: ierp add [event|events|expense|expenses|contact|...] [args]%s\n", config.Red, config.Reset)
+		os.Exit(1)
+	}
+
+	target := args[0]
+	subArgs := args[1:]
+
+	switch target {
+	case "event", "events":
+		if len(subArgs) > 0 && (strings.HasSuffix(subArgs[0], ".md") || strings.HasSuffix(subArgs[0], ".json")) {
+			handleIngestEvents(subArgs)
+		} else {
+			handleInsertEvent(subArgs)
+		}
+	case "expense", "expenses":
+		if len(subArgs) > 0 && (strings.HasSuffix(subArgs[0], ".md") || strings.HasSuffix(subArgs[0], ".json")) {
+			handleIngestExpenses(subArgs)
+		} else {
+			handleInsertExpense(subArgs)
+		}
+	case "contact", "contacts":
+		handleInsertContact(subArgs)
+	case "snapshot", "snapshots":
+		handleInsertSnapshot(subArgs)
+	case "commitment", "commitments":
+		handleInsertCommitment(subArgs)
+	case "project", "projects":
+		handleInsertProject(subArgs)
+	case "decision", "decisions":
+		handleInsertDecision(subArgs)
+	default:
+		if strings.HasSuffix(target, ".md") || strings.HasSuffix(target, ".json") {
+			handleIngestEvents(args)
+		} else {
+			handleInsertEvent(args)
+		}
+	}
+}
+
+func handleIngestEvents(args []string) {
+	fs := flag.NewFlagSet("events ingest", flag.ExitOnError)
+	tag := fs.String("tag", "", "Default tag to attach to ingested event (e.g. travel,singapore)")
+	contactsList := fs.String("contacts", "", "Comma-separated contact names or IDs")
+	place := fs.String("place", "", "Location/place override")
+	_ = fs.Parse(args)
+
+	remaining := fs.Args()
+	if len(remaining) == 0 {
+		fmt.Fprintf(os.Stderr, "%sUsage: ierp event ingest <file.md|file.json> [--tag <tag>] [--contacts <contacts>] [--place <place>]%s\n", config.Red, config.Reset)
+		os.Exit(1)
+	}
+
+	targetPath := remaining[0]
+	if strings.HasPrefix(targetPath, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			targetPath = filepath.Join(home, targetPath[2:])
+		}
+	}
+
+	database := openDB()
+	defer database.Close()
+
+	res, err := events.IngestFile(database, targetPath, *tag, *contactsList, *place)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError ingesting event: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+
+	fmt.Printf("%s✅ Successfully logged timeline event #%d from %s!%s\n", config.Green, res.EventID, res.SourceDoc, config.Reset)
+	fmt.Printf("  • Title:    %s\n", res.Title)
+	fmt.Printf("  • Date:     %s", res.StartDate)
+	if res.EndDate != "" && res.EndDate != res.StartDate {
+		fmt.Printf(" to %s", res.EndDate)
+	}
+	fmt.Println()
+	if res.Place != "" {
+		fmt.Printf("  • Place:    %s\n", res.Place)
+	}
+	if len(res.Contacts) > 0 {
+		fmt.Printf("  • Contacts: %s\n", strings.Join(res.Contacts, ", "))
+	}
+	if len(res.Tags) > 0 {
+		fmt.Printf("  • Tags:     %s\n", strings.Join(res.Tags, ", "))
+	}
+}
+
 func handleInsertEvent(args []string) {
 	fs := flag.NewFlagSet("insert", flag.ExitOnError)
 	title := fs.String("title", "", "Event title (required)")
@@ -291,6 +424,10 @@ func handleInsertEvent(args []string) {
 
 	if *title == "" {
 		if len(fs.Args()) > 0 {
+			if len(fs.Args()) == 1 && (strings.HasSuffix(fs.Args()[0], ".md") || strings.HasSuffix(fs.Args()[0], ".json")) {
+				handleIngestEvents(args)
+				return
+			}
 			*title = strings.Join(fs.Args(), " ")
 		} else {
 			fmt.Fprintf(os.Stderr, "%sError: --title is required (or provide title directly)%s\n", config.Red, config.Reset)

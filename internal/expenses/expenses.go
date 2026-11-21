@@ -23,6 +23,7 @@ type Expense struct {
 	Account   string  `json:"account,omitempty"`
 	Notes     string  `json:"notes,omitempty"`
 	Tags      string  `json:"tags,omitempty"`
+	Type      string  `json:"type,omitempty"`
 	Source    string  `json:"source,omitempty"`
 	CreatedAt string  `json:"created_at,omitempty"`
 	UpdatedAt string  `json:"updated_at,omitempty"`
@@ -34,6 +35,7 @@ type ListOptions struct {
 	Offset    int
 	Category  string
 	Tag       string
+	Type      string // 'EXPENSE' or 'INCOME'
 	Month     string // 'YYYY-MM'
 	StartDate string // 'YYYY-MM-DD'
 	EndDate   string // 'YYYY-MM-DD'
@@ -73,13 +75,17 @@ func InsertExpense(database *sql.DB, e Expense) (int, error) {
 	if e.Source == "" {
 		e.Source = "manual"
 	}
+	if e.Type == "" {
+		e.Type = "EXPENSE"
+	}
+	e.Type = strings.ToUpper(strings.TrimSpace(e.Type))
 
 	res, err := database.Exec(`
 		INSERT INTO expenses (
-			date, title, amount, currency, category, account, notes, tags, source
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			date, title, amount, currency, category, account, notes, tags, type, source
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, e.Date, strings.TrimSpace(e.Title), e.Amount, e.Currency,
-		e.Category, strings.TrimSpace(e.Account), e.Notes, strings.TrimSpace(e.Tags), e.Source)
+		e.Category, strings.TrimSpace(e.Account), e.Notes, strings.TrimSpace(e.Tags), e.Type, e.Source)
 	if err != nil {
 		return 0, fmt.Errorf("failed to insert expense: %w", err)
 	}
@@ -103,13 +109,18 @@ func UpdateExpense(database *sql.DB, id int, e Expense) (bool, error) {
 	}
 	e.Category = strings.ToLower(strings.TrimSpace(e.Category))
 
+	if e.Type == "" {
+		e.Type = "EXPENSE"
+	}
+	e.Type = strings.ToUpper(strings.TrimSpace(e.Type))
+
 	res, err := database.Exec(`
 		UPDATE expenses
 		SET date = ?, title = ?, amount = ?, currency = ?, category = ?,
-		    account = ?, notes = ?, tags = ?, source = ?, updated_at = datetime('now', 'localtime')
+		    account = ?, notes = ?, tags = ?, type = ?, source = ?, updated_at = datetime('now', 'localtime')
 		WHERE id = ?
 	`, e.Date, strings.TrimSpace(e.Title), e.Amount, e.Currency,
-		e.Category, strings.TrimSpace(e.Account), e.Notes, strings.TrimSpace(e.Tags), e.Source, id)
+		e.Category, strings.TrimSpace(e.Account), e.Notes, strings.TrimSpace(e.Tags), e.Type, e.Source, id)
 	if err != nil {
 		return false, fmt.Errorf("failed to update expense: %w", err)
 	}
@@ -140,12 +151,12 @@ func GetExpenseByID(database *sql.DB, id int) (*Expense, error) {
 	err := database.QueryRow(`
 		SELECT id, date, title, amount, currency, category,
 		       COALESCE(account, ''), COALESCE(notes, ''), COALESCE(tags, ''),
-		       COALESCE(source, ''), COALESCE(created_at, ''), COALESCE(updated_at, '')
+		       COALESCE(type, 'EXPENSE'), COALESCE(source, ''), COALESCE(created_at, ''), COALESCE(updated_at, '')
 		FROM expenses
 		WHERE id = ?
 	`, id).Scan(
 		&e.ID, &e.Date, &e.Title, &e.Amount, &e.Currency, &e.Category,
-		&e.Account, &e.Notes, &e.Tags, &e.Source, &e.CreatedAt, &e.UpdatedAt,
+		&e.Account, &e.Notes, &e.Tags, &e.Type, &e.Source, &e.CreatedAt, &e.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -164,6 +175,11 @@ func ListExpenses(database *sql.DB, opts ListOptions) ([]Expense, error) {
 	if opts.Category != "" {
 		conditions = append(conditions, "category = ?")
 		args = append(args, strings.ToLower(strings.TrimSpace(opts.Category)))
+	}
+
+	if opts.Type != "" {
+		conditions = append(conditions, "type = ?")
+		args = append(args, strings.ToUpper(strings.TrimSpace(opts.Type)))
 	}
 
 	if opts.Tag != "" {
@@ -199,7 +215,7 @@ func ListExpenses(database *sql.DB, opts ListOptions) ([]Expense, error) {
 	query := fmt.Sprintf(`
 		SELECT id, date, title, amount, currency, category,
 		       COALESCE(account, ''), COALESCE(notes, ''), COALESCE(tags, ''),
-		       COALESCE(source, ''), COALESCE(created_at, ''), COALESCE(updated_at, '')
+		       COALESCE(type, 'EXPENSE'), COALESCE(source, ''), COALESCE(created_at, ''), COALESCE(updated_at, '')
 		FROM expenses
 		%s
 		ORDER BY date DESC, id DESC
@@ -219,7 +235,7 @@ func ListExpenses(database *sql.DB, opts ListOptions) ([]Expense, error) {
 		var e Expense
 		if err := rows.Scan(
 			&e.ID, &e.Date, &e.Title, &e.Amount, &e.Currency, &e.Category,
-			&e.Account, &e.Notes, &e.Tags, &e.Source, &e.CreatedAt, &e.UpdatedAt,
+			&e.Account, &e.Notes, &e.Tags, &e.Type, &e.Source, &e.CreatedAt, &e.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

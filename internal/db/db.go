@@ -398,8 +398,18 @@ func InitDB(dbPath string, verbose bool) error {
         account TEXT,
         notes TEXT,
         tags TEXT,
+        type TEXT NOT NULL DEFAULT 'EXPENSE',
         source TEXT DEFAULT 'manual',
         created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL DEFAULT 'Bank Account',
+        balance REAL NOT NULL DEFAULT 0,
+        currency TEXT NOT NULL DEFAULT 'IDR',
         updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
 
@@ -567,6 +577,14 @@ func migrateColumns(database *sql.DB) error {
 		}
 		if !vendorsCols["source"] {
 			_, _ = database.Exec("ALTER TABLE vendors ADD COLUMN source TEXT DEFAULT 'manual';")
+		}
+	}
+
+	// Expenses columns
+	expensesCols, err := getTableColumns(database, "expenses")
+	if err == nil {
+		if !expensesCols["type"] {
+			_, _ = database.Exec("ALTER TABLE expenses ADD COLUMN type TEXT NOT NULL DEFAULT 'EXPENSE';")
 		}
 	}
 

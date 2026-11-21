@@ -25,6 +25,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 		account TEXT,
 		notes TEXT,
 		tags TEXT,
+		type TEXT NOT NULL DEFAULT 'EXPENSE',
 		source TEXT DEFAULT 'manual',
 		created_at TEXT DEFAULT (datetime('now', 'localtime')),
 		updated_at TEXT DEFAULT (datetime('now', 'localtime'))

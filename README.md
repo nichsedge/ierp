@@ -73,6 +73,10 @@ ierp insert-project --title "Digital Sovereignty Infra" --priority high
 # Log a structured event linked to the project
 ierp insert --title "Deploy SQLite WAL" --place "Jakarta" --start "2026-10-04" --project-id 1
 
+# Ingest timeline event directly from Markdown travelogue note
+ierp add events "~/Projects/digital-graveyard/content/Write/Two Days in Singapore.md"
+ierp event ingest "~/Projects/digital-graveyard/content/Write/Two Days in Singapore.md" --tag "singapore"
+
 # Search events with FTS5 BM25 ranking
 ierp search "Dinner"
 
@@ -143,6 +147,9 @@ ierp dashboard --port 8921
 | `ierp insert-skill` | Record a skill into capability inventory (`--skill`, `--type`, `--status`, `--date`, `--notes`). |
 | `ierp skills` | List capability inventory skills (`--type`, `--json`). |
 | `ierp audit` | Scan entire ERP for missing data, overdue items, and actionable next steps. |
+| `ierp event` | Event management command group (`add`, `list`, `search`, `ingest`, `delete`). |
+| `ierp add <entity>` | Unified entity creation wrapper (`events`, `expenses`, `contacts`, `snapshots`). |
+| `ierp ingest-events <file>` | Ingest timeline event directly from Markdown travelogue or JSON (`--tag`, `--contacts`, `--place`). |
 | `ierp insert` | Insert a structured journal event (`--title`, `--place`, `--start`, `--tags`, `--contacts`). |
 | `ierp list` | List recent events with filters (`--limit`, `--tag`, `--life`, `--exclude-tag`, `--source`, `--q`). |
 | `ierp search "<query>"` | Fast SQLite FTS5 full-text search with BM25 relevance ranking and note snippets. |
