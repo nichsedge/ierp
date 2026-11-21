@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/nichsedge/ierp/internal/config"
+	"github.com/nichsedge/ierp/internal/db"
 	"github.com/nichsedge/ierp/internal/portfolio/pkg/aistate"
 	"github.com/nichsedge/ierp/internal/portfolio/pkg/models"
 )
@@ -132,9 +134,54 @@ func ComputeSovereignPlan(liquidCash, monthlyBurn float64) SovereignAllocationPl
 	}
 }
 
+func queryBurn(d *sql.DB) float64 {
+	if d == nil {
+		return 0
+	}
+	var exp30d float64
+	_ = d.QueryRow(`
+		SELECT COALESCE(SUM(amount), 0)
+		FROM expenses
+		WHERE (type = 'EXPENSE' OR type IS NULL OR type = '')
+		  AND date >= date('now', '-30 days')
+	`).Scan(&exp30d)
+
+	var commitmentsBurn float64
+	_ = d.QueryRow(`
+		SELECT COALESCE(SUM(
+			CASE frequency
+				WHEN 'yearly' THEN amount / 12.0
+				WHEN 'quarterly' THEN amount / 3.0
+				WHEN 'weekly' THEN amount * (52.0 / 12.0)
+				ELSE amount
+			END
+		), 0)
+		FROM recurring_commitments
+		WHERE status = 'active'
+	`).Scan(&commitmentsBurn)
+
+	return exp30d + commitmentsBurn
+}
+
+func getLiveMonthlyBurn(dbConn *sql.DB) float64 {
+	if burn := queryBurn(dbConn); burn > 0 {
+		return burn
+	}
+	if ierpDB, err := db.Open(config.DBPath()); err == nil && ierpDB != nil {
+		defer ierpDB.Close()
+		if burn := queryBurn(ierpDB); burn > 0 {
+			return burn
+		}
+	}
+	return 0
+}
+
 // GenerateAdvisorPayload computes the complete advisor state.
 func GenerateAdvisorPayload(snap *models.Snapshot, aiState *aistate.AIState, dbConn *sql.DB) *AdvisorPayload {
 	monthlyBurn := 5350000.0
+	if liveBurn := getLiveMonthlyBurn(dbConn); liveBurn > 0 {
+		monthlyBurn = liveBurn
+	}
 	liquidCash := snap.Totals.BankCashIDR
 	netWorth := snap.Totals.NetWorthIDR
 	dryPowderPct := 0.0

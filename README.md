@@ -124,6 +124,7 @@ ierp dashboard --port 8921
 | `ierp expense list` | List recent expenses with filters (`--limit`, `--category`, `--tag`, `--month`, `--json`). |
 | `ierp expense summary` | Aggregated expense summary and category breakdown (`--month`, `--start`, `--end`, `--json`). |
 | `ierp expense ingest <file>` | Ingest expenses directly from Markdown travelogue tables or JSON snapshot files (`--tag`). |
+| `ierp expense backfill [path]` | Migrate historical SansFinance SQLite accounts and transactions into iERP. |
 | `ierp expense delete --id <ID>` | Permanently remove an expense record. |
 | `ierp insert-project` | Create a strategic initiative (`--title`, `--slug`, `--priority`, `--target`). |
 | `ierp projects` | List projects. |

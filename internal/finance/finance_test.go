@@ -65,7 +65,7 @@ func TestFinanceSnapshotsCommitmentsAndRunway(t *testing.T) {
 		t.Errorf("expected monthly burn %.2f, got %.2f", expectedBurn, burn.TotalMonthlyBurn)
 	}
 
-	// Sovereign Runway
+	// Sovereign Runway without expenses
 	runway, err := finance.ComputeRunway(database)
 	if err != nil {
 		t.Fatalf("ComputeRunway failed: %v", err)
@@ -76,6 +76,31 @@ func TestFinanceSnapshotsCommitmentsAndRunway(t *testing.T) {
 	}
 	if runway.StatusLabel != "FORTRESS (>24m)" {
 		t.Errorf("expected status 'FORTRESS (>24m)', got '%s'", runway.StatusLabel)
+	}
+
+	// Insert discretionary expense (1M IDR within trailing 30 days)
+	_, err = database.Exec(`
+		INSERT INTO expenses (date, title, amount, currency, category, account, type, source)
+		VALUES (date('now'), 'Groceries & Supplies', 1000000, 'IDR', 'groceries', 'Wallet', 'EXPENSE', 'manual')
+	`)
+	if err != nil {
+		t.Fatalf("failed inserting expense: %v", err)
+	}
+
+	runwayWithExp, err := finance.ComputeRunway(database)
+	if err != nil {
+		t.Fatalf("ComputeRunway with expenses failed: %v", err)
+	}
+	// Monthly Burn should now be 3M (fixed) + 1M (discretionary) = 4M
+	// Runway should be 120M / 4M = 30.0 months
+	if runwayWithExp.DiscretionaryBurn != 1000000 {
+		t.Errorf("expected discretionary burn 1000000, got %.2f", runwayWithExp.DiscretionaryBurn)
+	}
+	if runwayWithExp.MonthlyBurn != 4000000 {
+		t.Errorf("expected total monthly burn 4000000, got %.2f", runwayWithExp.MonthlyBurn)
+	}
+	if runwayWithExp.RunwayMonths != 30.0 {
+		t.Errorf("expected runway 30.0 months, got %.1f", runwayWithExp.RunwayMonths)
 	}
 }
 

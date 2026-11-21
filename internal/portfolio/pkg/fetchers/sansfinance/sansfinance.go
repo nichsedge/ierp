@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/nichsedge/ierp/internal/config"
+	"github.com/nichsedge/ierp/internal/db"
 	"github.com/nichsedge/ierp/internal/portfolio/pkg/models"
 	"github.com/nichsedge/ierp/internal/portfolio/pkg/r2"
 	_ "modernc.org/sqlite"
@@ -37,8 +39,57 @@ func DownloadFromR2(accountID, accessKey, secretKey, bucket, destPath string) er
 	return r2.DownloadFile(accountID, accessKey, secretKey, bucket, r2BlobName, destPath)
 }
 
-// Fetch extracts cash/p2p accounts from Sans Finance SQLite.
+// FetchFromDB extracts cash/p2p accounts directly from iERP's accounts table.
+func FetchFromDB(database *sql.DB) (*RawSansfinanceData, []models.Holding, error) {
+	if database == nil {
+		return nil, nil, fmt.Errorf("database is nil")
+	}
+	query := "SELECT name, type, balance, currency FROM accounts WHERE type IN ('Cash', 'Bank Account', 'P2P Lending', 'Investment')"
+	rows, err := database.Query(query)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to query accounts: %w", err)
+	}
+	defer rows.Close()
+
+	var accounts []AccountEntry
+	for rows.Next() {
+		var name, accType, curr string
+		var balance float64
+		if err := rows.Scan(&name, &accType, &balance, &curr); err != nil {
+			continue
+		}
+		if curr == "" {
+			curr = "IDR"
+		}
+		accounts = append(accounts, AccountEntry{
+			Name:     name,
+			Type:     accType,
+			Balance:  balance,
+			Currency: curr,
+		})
+	}
+
+	if len(accounts) == 0 {
+		return nil, nil, fmt.Errorf("no accounts found in iERP database")
+	}
+
+	raw := &RawSansfinanceData{Accounts: accounts}
+	holdings := Standardize(raw)
+	return raw, holdings, nil
+}
+
+// Fetch extracts cash/p2p accounts from iERP's accounts table if available,
+// falling back to Sans Finance SQLite snapshot on Cloudflare R2.
 func Fetch(accountID, accessKey, secretKey, bucket string) (*RawSansfinanceData, []models.Holding, error) {
+	// 1. Try fetching directly from iERP SSOT database first
+	if ierpDB, err := db.Open(config.DBPath()); err == nil && ierpDB != nil {
+		defer ierpDB.Close()
+		if raw, holdings, err := FetchFromDB(ierpDB); err == nil && len(holdings) > 0 {
+			return raw, holdings, nil
+		}
+	}
+
+	// 2. Fall back to downloading snapshot from Cloudflare R2
 	tmpFile, err := os.CreateTemp("", "sansfinance-*.sqlite")
 	if err != nil {
 		return nil, nil, err
@@ -51,14 +102,14 @@ func Fetch(accountID, accessKey, secretKey, bucket string) (*RawSansfinanceData,
 		return nil, nil, fmt.Errorf("failed to download Sans Finance DB: %w", err)
 	}
 
-	db, err := sql.Open("sqlite", tmpPath)
+	dbConn, err := sql.Open("sqlite", tmpPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open Sans Finance SQLite: %w", err)
 	}
-	defer db.Close()
+	defer dbConn.Close()
 
 	query := "SELECT name, type, balance, currency FROM accounts WHERE type IN ('Cash', 'Bank Account', 'P2P Lending')"
-	rows, err := db.Query(query)
+	rows, err := dbConn.Query(query)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to query accounts: %w", err)
 	}

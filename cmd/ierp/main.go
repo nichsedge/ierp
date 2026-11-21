@@ -1065,12 +1065,14 @@ func handleRunway(args []string) {
 	}
 
 	fmt.Printf("%s=== Sovereign Runway & Treasury Health ===%s\n", config.Bold, config.Reset)
-	fmt.Printf("  Liquid Cash:         IDR %14.2f\n", runway.LiquidCash)
-	fmt.Printf("  Net Worth:           IDR %14.2f\n", runway.NetWorth)
-	fmt.Printf("  Monthly Fixed Burn:  IDR %14.2f (%d commitments)\n", runway.MonthlyBurn, runway.CommitmentsCount)
+	fmt.Printf("  Liquid Cash:               IDR %14.2f\n", runway.LiquidCash)
+	fmt.Printf("  Net Worth:                 IDR %14.2f\n", runway.NetWorth)
+	fmt.Printf("  Monthly Fixed Burn:        IDR %14.2f (%d commitments)\n", runway.CommitmentBurn, runway.CommitmentsCount)
+	fmt.Printf("  Discretionary Burn (30d):  IDR %14.2f (%d expenses)\n", runway.DiscretionaryBurn, runway.ExpensesCount30d)
+	fmt.Printf("  Total Monthly Burn:        IDR %14.2f\n", runway.MonthlyBurn)
 	fmt.Println("  ---------------------------------------------")
 	if runway.IsInfinite {
-		fmt.Printf("  Runway:              %s%s (No active fixed burn)%s\n", config.Green, runway.StatusLabel, config.Reset)
+		fmt.Printf("  Runway:                    %s%s (No active burn)%s\n", config.Green, runway.StatusLabel, config.Reset)
 	} else {
 		color := config.Green
 		if runway.RunwayMonths < 6 {
@@ -2265,6 +2267,8 @@ func handleExpenses(args []string) {
 		handleExpenseSummary(subArgs)
 	case "ingest", "import":
 		handleIngestExpenses(subArgs)
+	case "backfill":
+		handleBackfillExpenses(subArgs)
 	case "delete", "rm":
 		handleDeleteExpense(subArgs)
 	default:
@@ -2272,7 +2276,7 @@ func handleExpenses(args []string) {
 			handleListExpenses(args)
 		} else {
 			fmt.Fprintf(os.Stderr, "%sUnknown expenses subcommand: %s%s\n", config.Red, sub, config.Reset)
-			fmt.Println("Usage: ierp expense [add|list|summary|ingest|delete] [flags]")
+			fmt.Println("Usage: ierp expense [add|list|summary|ingest|backfill|delete] [flags]")
 			os.Exit(1)
 		}
 	}
@@ -2479,4 +2483,44 @@ func handleDeleteExpense(args []string) {
 	}
 
 	fmt.Printf("%sDeleted expense #%d%s\n", config.Green, *id, config.Reset)
+}
+
+func handleBackfillExpenses(args []string) {
+	defaultDB := "/home/al/Projects/ierp/data/sans_finance_latest.sqlite"
+	if home, err := os.UserHomeDir(); err == nil {
+		defaultDB = filepath.Join(home, "Projects", "ierp", "data", "sans_finance_latest.sqlite")
+	}
+
+	targetPath := defaultDB
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		targetPath = args[0]
+	}
+
+	if strings.HasPrefix(targetPath, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			targetPath = filepath.Join(home, targetPath[2:])
+		}
+	}
+
+	if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "%sError: source Sans Finance SQLite DB not found at %s%s\n", config.Red, targetPath, config.Reset)
+		os.Exit(1)
+	}
+
+	fmt.Printf("⏳ Starting Sans Finance backfill from: %s\n", targetPath)
+
+	database := openDB()
+	defer database.Close()
+
+	stats, err := expenses.BackfillFromSansFinance(database, targetPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sError during backfill: %v%s\n", config.Red, err, config.Reset)
+		os.Exit(1)
+	}
+
+	fmt.Printf("%s✅ Sans Finance backfill completed successfully!%s\n", config.Green, config.Reset)
+	fmt.Printf("  • Live Accounts Imported:  %d\n", stats.AccountsImported)
+	fmt.Printf("  • Expenses Imported:       %d\n", stats.ExpensesImported)
+	fmt.Printf("  • Expenses Skipped (dup):  %d\n", stats.ExpensesSkipped)
+	fmt.Printf("  • Total Expense Amount:    IDR %.2f\n", stats.TotalExpenseAmount)
 }

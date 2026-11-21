@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nichsedge/ierp/internal/config"
+	"github.com/nichsedge/ierp/internal/db"
 	"github.com/nichsedge/ierp/internal/portfolio/pkg/models"
 )
 
@@ -325,6 +327,9 @@ func GenerateAIState(snap *models.Snapshot, dbConn *sql.DB) (*AIState, error) {
 	}
 	monthlyPassiveIDR := totalAnnualPassiveIDR / 12.0
 	burnIDR := 5000000.0 // Baseline conservative monthly burn
+	if liveBurn := getLiveMonthlyBurn(dbConn); liveBurn > 0 {
+		burnIDR = liveBurn
+	}
 	fiCoverage := math.Round((monthlyPassiveIDR/burnIDR*100.0)*10) / 10
 	fiStatus := "Accumulation (<25%)"
 	if fiCoverage >= 100.0 {
@@ -869,6 +874,48 @@ func SaveAIState(state *AIState, digestMD string, dataDir string, dbConn *sql.DB
 	}
 
 	return nil
+}
+
+func queryBurn(d *sql.DB) float64 {
+	if d == nil {
+		return 0
+	}
+	var exp30d float64
+	_ = d.QueryRow(`
+		SELECT COALESCE(SUM(amount), 0)
+		FROM expenses
+		WHERE (type = 'EXPENSE' OR type IS NULL OR type = '')
+		  AND date >= date('now', '-30 days')
+	`).Scan(&exp30d)
+
+	var commitmentsBurn float64
+	_ = d.QueryRow(`
+		SELECT COALESCE(SUM(
+			CASE frequency
+				WHEN 'yearly' THEN amount / 12.0
+				WHEN 'quarterly' THEN amount / 3.0
+				WHEN 'weekly' THEN amount * (52.0 / 12.0)
+				ELSE amount
+			END
+		), 0)
+		FROM recurring_commitments
+		WHERE status = 'active'
+	`).Scan(&commitmentsBurn)
+
+	return exp30d + commitmentsBurn
+}
+
+func getLiveMonthlyBurn(dbConn *sql.DB) float64 {
+	if burn := queryBurn(dbConn); burn > 0 {
+		return burn
+	}
+	if ierpDB, err := db.Open(config.DBPath()); err == nil && ierpDB != nil {
+		defer ierpDB.Close()
+		if burn := queryBurn(ierpDB); burn > 0 {
+			return burn
+		}
+	}
+	return 0
 }
 
 func formatNumber(v float64) string {

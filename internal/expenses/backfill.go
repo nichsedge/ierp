@@ -129,7 +129,7 @@ func BackfillFromSansFinance(targetDB *sql.DB, sansDBPath string) (*BackfillStat
 	defer insertStmt.Close()
 
 	// Prepare duplicate check query
-	checkStmt, err := targetDB.Prepare(`
+	checkStmt, err := tx.Prepare(`
 		SELECT id FROM expenses WHERE date = ? AND title = ? AND amount = ? LIMIT 1
 	`)
 	if err != nil {

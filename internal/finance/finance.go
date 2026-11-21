@@ -299,6 +299,8 @@ func ComputeMonthlyBurn(database *sql.DB, status string) (MonthlyBurnResult, err
 type RunwayResult struct {
 	LiquidCash         float64            `json:"liquid_cash"`
 	NetWorth           float64            `json:"net_worth"`
+	CommitmentBurn     float64            `json:"commitment_burn"`
+	DiscretionaryBurn  float64            `json:"discretionary_burn"`
 	MonthlyBurn        float64            `json:"monthly_burn"`
 	RunwayMonths       float64            `json:"runway_months"`
 	IsInfinite         bool               `json:"is_infinite"`
@@ -306,6 +308,7 @@ type RunwayResult struct {
 	BurnByCategory     map[string]float64 `json:"burn_by_category"`
 	LatestSnapshotDate string             `json:"latest_snapshot_date,omitempty"`
 	CommitmentsCount   int                `json:"commitments_count"`
+	ExpensesCount30d   int                `json:"expenses_count_30d"`
 }
 
 // ComputeRunway calculates sovereignty runway in months.
@@ -320,16 +323,65 @@ func ComputeRunway(database *sql.DB) (RunwayResult, error) {
 		return RunwayResult{}, err
 	}
 
+	// Query trailing 30-day discretionary expenses
+	var exp30d float64
+	var expCount int
+	_ = database.QueryRow(`
+		SELECT COALESCE(SUM(amount), 0), COUNT(*)
+		FROM expenses
+		WHERE (type = 'EXPENSE' OR type IS NULL OR type = '')
+		  AND date >= date('now', '-30 days')
+	`).Scan(&exp30d, &expCount)
+
+	// Combine burn by category with discretionary expenses
+	byCategory := make(map[string]float64)
+	for k, v := range burn.ByCategory {
+		byCategory[k] = v
+	}
+	if expRows, err := database.Query(`
+		SELECT category, COALESCE(SUM(amount), 0)
+		FROM expenses
+		WHERE (type = 'EXPENSE' OR type IS NULL OR type = '')
+		  AND date >= date('now', '-30 days')
+		GROUP BY category
+	`); err == nil {
+		defer expRows.Close()
+		for expRows.Next() {
+			var cat string
+			var sumAmt float64
+			if err := expRows.Scan(&cat, &sumAmt); err == nil {
+				byCategory["expense:"+cat] += sumAmt
+			}
+		}
+	}
+
+	totalMonthlyBurn := burn.TotalMonthlyBurn + exp30d
+
 	res := RunwayResult{
-		MonthlyBurn:      burn.TotalMonthlyBurn,
-		BurnByCategory:   burn.ByCategory,
-		CommitmentsCount: burn.CommitmentsCount,
+		CommitmentBurn:    burn.TotalMonthlyBurn,
+		DiscretionaryBurn: exp30d,
+		MonthlyBurn:       totalMonthlyBurn,
+		BurnByCategory:    byCategory,
+		CommitmentsCount:  burn.CommitmentsCount,
+		ExpensesCount30d:  expCount,
 	}
 
 	if snapshot != nil {
 		res.LiquidCash = snapshot.LiquidCash
 		res.NetWorth = snapshot.NetWorth
 		res.LatestSnapshotDate = snapshot.SnapshotDate
+	}
+
+	// If snapshot has 0 liquid cash or is nil, fall back to live accounts in iERP
+	if res.LiquidCash == 0 {
+		var liveCash float64
+		if err := database.QueryRow(`
+			SELECT COALESCE(SUM(balance), 0)
+			FROM accounts
+			WHERE type IN ('Cash', 'Bank Account', 'P2P Lending')
+		`).Scan(&liveCash); err == nil && liveCash > 0 {
+			res.LiquidCash = liveCash
+		}
 	}
 
 	if res.MonthlyBurn <= 0 {
