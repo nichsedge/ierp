@@ -601,29 +601,29 @@
   <div id="tab-expenses" v-if="activeTab === 'expenses'">
     <div class="stats-grid" style="margin-bottom:20px;">
       <div class="stat-card">
-        <div class="stat-label">Total Recorded</div>
+        <div class="stat-label">Total Expenses</div>
         <div class="stat-value" style="color:var(--accent-pink); font-size:24px;">
-          Rp {{ expenses.summary ? expenses.summary.total.toLocaleString('id-ID') : '0' }}
+          Rp {{ expenses.summary ? (expenses.summary.total_expense || expenses.summary.total || 0).toLocaleString('id-ID') : '0' }}
         </div>
         <div class="stat-icon">💸</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Transactions</div>
-        <div class="stat-value" style="color:var(--accent-cyan); font-size:24px;">
-          {{ expenses.total }}
+        <div class="stat-label">Total Income</div>
+        <div class="stat-value" style="color:var(--accent-green); font-size:24px;">
+          Rp {{ expenses.summary ? (expenses.summary.total_income || 0).toLocaleString('id-ID') : '0' }}
         </div>
-        <div class="stat-icon">🧾</div>
+        <div class="stat-icon">💰</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Top Category</div>
-        <div class="stat-value" style="color:var(--accent-amber); font-size:20px;">
-          {{ (expenses.summary && expenses.summary.by_category && expenses.summary.by_category[0]) ? expenses.summary.by_category[0].category : '—' }}
+        <div class="stat-label">Net Cash Flow</div>
+        <div class="stat-value" :style="{ color: (expenses.summary && expenses.summary.net_cash_flow < 0) ? 'var(--accent-pink)' : 'var(--accent-green)', fontSize: '20px' }">
+          Rp {{ expenses.summary ? (expenses.summary.net_cash_flow || 0).toLocaleString('id-ID') : '0' }}
         </div>
-        <div class="stat-icon">🏷️</div>
+        <div class="stat-icon">⚖️</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Active Period</div>
-        <div class="stat-value" style="color:var(--accent-green); font-size:20px;">
+        <div class="stat-value" style="color:var(--accent-cyan); font-size:18px;">
           {{ expenses.summary ? expenses.summary.period : 'All Time' }}
         </div>
         <div class="stat-icon">📅</div>
@@ -644,12 +644,20 @@
 
     <!-- Transactions List -->
     <div class="panel">
-      <div class="panel-title"><span>💳 Transaction Ledger</span></div>
+      <div class="panel-title" style="display:flex; justify-content:space-between; align-items:center;">
+        <span>💳 Cash Flow Ledger</span>
+        <div style="display:flex; gap:6px;">
+          <button :class="['tab-btn', { active: expenses.type === '' }]" style="padding:4px 10px; font-size:12px;" @click="loadExpenses(expenses.month, expenses.category, expenses.tag, '')">All</button>
+          <button :class="['tab-btn', { active: expenses.type === 'EXPENSE' }]" style="padding:4px 10px; font-size:12px; color:var(--accent-pink);" @click="loadExpenses(expenses.month, expenses.category, expenses.tag, 'EXPENSE')">Expenses</button>
+          <button :class="['tab-btn', { active: expenses.type === 'INCOME' }]" style="padding:4px 10px; font-size:12px; color:var(--accent-green);" @click="loadExpenses(expenses.month, expenses.category, expenses.tag, 'INCOME')">Income</button>
+        </div>
+      </div>
       <div style="overflow-x:auto;">
         <table style="width:100%; border-collapse:collapse; margin-top:10px; font-size:13.5px;">
           <thead>
             <tr style="border-bottom:1px solid var(--card-border); text-align:left; color:var(--text-muted);">
               <th style="padding:10px;">Date</th>
+              <th style="padding:10px;">Type</th>
               <th style="padding:10px;">Title & Details</th>
               <th style="padding:10px;">Category</th>
               <th style="padding:10px;">Tags</th>
@@ -661,6 +669,12 @@
             <tr v-for="e in expenses.items" :key="e.id" style="border-bottom:1px solid rgba(255,255,255,0.03);">
               <td style="padding:10px; color:var(--text-muted); white-space:nowrap;">{{ e.date }}</td>
               <td style="padding:10px;">
+                <span class="count-badge" 
+                      :style="{ color: e.type === 'INCOME' ? 'var(--accent-green)' : (e.type === 'TRANSFER' ? 'var(--accent-cyan)' : 'var(--accent-pink)'), borderColor: e.type === 'INCOME' ? 'rgba(34,197,94,0.3)' : 'rgba(236,72,153,0.3)' }">
+                  {{ e.type || 'EXPENSE' }}
+                </span>
+              </td>
+              <td style="padding:10px;">
                 <div style="font-weight:600;">{{ e.title }}</div>
                 <div v-if="e.notes" style="font-size:12px; color:var(--text-muted);">{{ e.notes }}</div>
               </td>
@@ -668,16 +682,17 @@
                 <span class="count-badge" style="text-transform:capitalize; color:var(--accent-cyan);">{{ e.category }}</span>
               </td>
               <td style="padding:10px; font-size:12px; color:var(--text-muted);">{{ e.tags }}</td>
-              <td style="padding:10px; text-align:right; font-weight:700; color:var(--accent-pink); white-space:nowrap;">
-                {{ e.currency }} {{ e.amount.toLocaleString('id-ID') }}
+              <td style="padding:10px; text-align:right; font-weight:700; white-space:nowrap;"
+                  :style="{ color: e.type === 'INCOME' ? 'var(--accent-green)' : 'var(--accent-pink)' }">
+                {{ e.type === 'INCOME' ? '+' : '-' }} {{ e.currency }} {{ e.amount.toLocaleString('id-ID') }}
               </td>
               <td style="padding:10px; text-align:center;">
                 <button @click="deleteExpense(e.id)" style="background:transparent; border:none; cursor:pointer; font-size:14px;" title="Delete">🗑️</button>
               </td>
             </tr>
             <tr v-if="expenses.items.length === 0">
-              <td colspan="6" style="padding:30px; text-align:center; color:var(--text-muted);">
-                No expense transactions found. Log one via <code>ierp expense add</code> or ingest a story with <code>ierp expense ingest &lt;file.md&gt;</code>.
+              <td colspan="7" style="padding:30px; text-align:center; color:var(--text-muted);">
+                No transactions found. Log one via <code>ierp expense add</code> or <code>ierp income add</code>.
               </td>
             </tr>
           </tbody>

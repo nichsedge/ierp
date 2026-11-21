@@ -92,6 +92,8 @@ func main() {
 		handleListCommitments(args)
 	case "expense", "expenses":
 		handleExpenses(args)
+	case "income":
+		handleIncome(args)
 	case "insert-expense":
 		handleInsertExpense(args)
 	case "ingest-expenses", "ingest-expense":
@@ -2282,20 +2284,48 @@ func handleExpenses(args []string) {
 	}
 }
 
+func handleIncome(args []string) {
+	if len(args) == 0 {
+		handleListExpenses([]string{"--type", "INCOME"})
+		return
+	}
+	sub := args[0]
+	subArgs := args[1:]
+	switch sub {
+	case "add", "insert":
+		handleInsertExpense(append([]string{"--type", "INCOME"}, subArgs...))
+	case "list":
+		handleListExpenses(append([]string{"--type", "INCOME"}, subArgs...))
+	default:
+		if strings.HasPrefix(sub, "-") {
+			handleListExpenses(append([]string{"--type", "INCOME"}, args...))
+		} else {
+			handleInsertExpense(append([]string{"--type", "INCOME"}, args...))
+		}
+	}
+}
+
 func handleInsertExpense(args []string) {
 	fs := flag.NewFlagSet("expense add", flag.ExitOnError)
-	title := fs.String("title", "", "Expense title / merchant / item (required)")
-	amount := fs.Float64("amount", 0, "Expense amount (required)")
-	cat := fs.String("category", "general", "Category (food, transport, flights, lodging, utilities, shopping, etc.)")
+	title := fs.String("title", "", "Transaction title / merchant / item (required)")
+	amount := fs.Float64("amount", 0, "Transaction amount (required)")
+	cat := fs.String("category", "general", "Category (food, transport, flights, lodging, utilities, shopping, salary, freelance, etc.)")
 	date := fs.String("date", "", "Date (YYYY-MM-DD, default today)")
 	cur := fs.String("currency", "IDR", "Currency (IDR, SGD, USD)")
-	acc := fs.String("account", "", "Payment account (e.g. Octo CIMB, BCA, Cash)")
+	acc := fs.String("account", "", "Payment/deposit account (e.g. Krom, Aladin, Wallet)")
+	expType := fs.String("type", "", "Transaction type: EXPENSE or INCOME (default auto-inferred or EXPENSE)")
 	notes := fs.String("notes", "", "Notes / description")
-	tags := fs.String("tags", "", "Comma-separated tags (e.g. travel,singapore)")
+	tags := fs.String("tags", "", "Comma-separated tags (e.g. travel,singapore,income)")
 	_ = fs.Parse(args)
 
 	if *title == "" || *amount <= 0 {
 		fmt.Fprintf(os.Stderr, "%sError: --title and --amount (>0) are required%s\n", config.Red, config.Reset)
+		os.Exit(1)
+	}
+
+	typeClean := strings.ToUpper(strings.TrimSpace(*expType))
+	if typeClean != "" && typeClean != "EXPENSE" && typeClean != "INCOME" && typeClean != "TRANSFER" {
+		fmt.Fprintf(os.Stderr, "%sError: --type must be EXPENSE, INCOME, or TRANSFER%s\n", config.Red, config.Reset)
 		os.Exit(1)
 	}
 
@@ -2311,6 +2341,7 @@ func handleInsertExpense(args []string) {
 		Account:  *acc,
 		Notes:    *notes,
 		Tags:     *tags,
+		Type:     typeClean,
 		Source:   "cli",
 	})
 	if err != nil {
@@ -2318,15 +2349,22 @@ func handleInsertExpense(args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("%sRecorded expense #%d: %s | %s %.2f (%s)%s\n",
-		config.Green, id, *title, strings.ToUpper(*cur), *amount, strings.ToLower(*cat), config.Reset)
+	saved, _ := expenses.GetExpenseByID(database, id)
+	resolvedType := "EXPENSE"
+	if saved != nil && saved.Type != "" {
+		resolvedType = saved.Type
+	}
+
+	fmt.Printf("%sRecorded %s #%d: %s | %s %.2f (%s)%s\n",
+		config.Green, resolvedType, id, *title, strings.ToUpper(*cur), *amount, strings.ToLower(*cat), config.Reset)
 }
 
 func handleListExpenses(args []string) {
 	fs := flag.NewFlagSet("expense list", flag.ExitOnError)
 	limit := fs.Int("limit", 30, "Max items to display")
 	cat := fs.String("category", "", "Filter by category")
-	tag := fs.String("tag", "", "Filter by tag")
+	tag := fs.String("tag", "", "Filter by tag (e.g. travel, income, expense)")
+	expType := fs.String("type", "", "Filter by type (EXPENSE, INCOME, TRANSFER, all)")
 	month := fs.String("month", "", "Filter by month (YYYY-MM)")
 	start := fs.String("start", "", "Filter by start date (YYYY-MM-DD)")
 	end := fs.String("end", "", "Filter by end date (YYYY-MM-DD)")
@@ -2340,6 +2378,7 @@ func handleListExpenses(args []string) {
 		Limit:     *limit,
 		Category:  *cat,
 		Tag:       *tag,
+		Type:      *expType,
 		Month:     *month,
 		StartDate: *start,
 		EndDate:   *end,
@@ -2356,27 +2395,49 @@ func handleListExpenses(args []string) {
 		return
 	}
 
-	fmt.Printf("%s=== Expenses (%d records) ===%s\n", config.Bold, len(items), config.Reset)
+	fmt.Printf("%s=== Cash Flow Ledger (%d records) ===%s\n", config.Bold, len(items), config.Reset)
 	if len(items) == 0 {
-		fmt.Println("  (No expense records found matching criteria)")
+		fmt.Println("  (No records found matching criteria)")
 		return
 	}
 
-	var totalIDR float64
+	var totalExpenseIDR, totalIncomeIDR float64
 	for _, e := range items {
 		if e.Currency == "IDR" {
-			totalIDR += e.Amount
+			if e.Type == "INCOME" {
+				totalIncomeIDR += e.Amount
+			} else {
+				totalExpenseIDR += e.Amount
+			}
 		}
+
+		typeColor := config.Red
+		typeBadge := "[EXP]"
+		if e.Type == "INCOME" {
+			typeColor = config.Green
+			typeBadge = "[INC]"
+		} else if e.Type == "TRANSFER" {
+			typeColor = config.Cyan
+			typeBadge = "[TRF]"
+		}
+
 		tagStr := ""
 		if e.Tags != "" {
 			tagStr = fmt.Sprintf(" [%s]", e.Tags)
 		}
-		fmt.Printf("#%-3d | %s | %-24s | %-10s | %s %12.2f%s\n",
-			e.ID, e.Date, truncateStr(e.Title, 24), e.Category, e.Currency, e.Amount, tagStr)
+		fmt.Printf("#%-3d | %s | %s%-5s%s | %-24s | %-10s | %s %12.2f%s\n",
+			e.ID, e.Date, typeColor, typeBadge, config.Reset, truncateStr(e.Title, 24), e.Category, e.Currency, e.Amount, tagStr)
 	}
-	if totalIDR > 0 {
-		fmt.Printf("\n%sFiltered IDR Total:%s Rp %14.2f\n", config.Bold, config.Reset, totalIDR)
+
+	fmt.Printf("\n%sFiltered Summary:%s\n", config.Bold, config.Reset)
+	fmt.Printf("  • Total Expenses: IDR %14.2f\n", totalExpenseIDR)
+	fmt.Printf("  • Total Income:   IDR %14.2f\n", totalIncomeIDR)
+	netFlow := totalIncomeIDR - totalExpenseIDR
+	netColor := config.Green
+	if netFlow < 0 {
+		netColor = config.Red
 	}
+	fmt.Printf("  • Net Flow:       %sIDR %14.2f%s\n", netColor, netFlow, config.Reset)
 }
 
 func handleExpenseSummary(args []string) {
@@ -2407,15 +2468,35 @@ func handleExpenseSummary(args []string) {
 		return
 	}
 
-	fmt.Printf("%s=== Expense Summary: %s ===%s\n", config.Bold, summary.Period, config.Reset)
-	fmt.Printf("  Total Recorded: IDR %.2f (%d transactions)\n\n", summary.Total, summary.Count)
-	fmt.Printf("%sCategory Breakdown:%s\n", config.Bold, config.Reset)
-	for _, b := range summary.ByCategory {
-		pct := 0.0
-		if summary.Total > 0 {
-			pct = (b.Total / summary.Total) * 100.0
+	fmt.Printf("%s=== Cash Flow Summary: %s ===%s\n", config.Bold, summary.Period, config.Reset)
+	fmt.Printf("  • Total Expenses: IDR %14.2f (%d txs)\n", summary.TotalExpense, summary.ExpenseCount)
+	fmt.Printf("  • Total Income:   IDR %14.2f (%d txs)\n", summary.TotalIncome, summary.IncomeCount)
+	netColor := config.Green
+	if summary.NetCashFlow < 0 {
+		netColor = config.Red
+	}
+	fmt.Printf("  • Net Cash Flow:  %sIDR %14.2f%s\n\n", netColor, summary.NetCashFlow, config.Reset)
+
+	if len(summary.ByCategory) > 0 {
+		fmt.Printf("%sExpenses by Category:%s\n", config.Bold, config.Reset)
+		for _, b := range summary.ByCategory {
+			pct := 0.0
+			if summary.TotalExpense > 0 {
+				pct = (b.Total / summary.TotalExpense) * 100.0
+			}
+			fmt.Printf("  • %-16s: IDR %12.2f (%2d txs, %5.1f%%)\n", b.Category, b.Total, b.Count, pct)
 		}
-		fmt.Printf("  • %-16s: IDR %12.2f (%2d txs, %5.1f%%)\n", b.Category, b.Total, b.Count, pct)
+	}
+
+	if len(summary.IncomeByCategory) > 0 {
+		fmt.Printf("\n%sIncome by Category:%s\n", config.Bold, config.Reset)
+		for _, b := range summary.IncomeByCategory {
+			pct := 0.0
+			if summary.TotalIncome > 0 {
+				pct = (b.Total / summary.TotalIncome) * 100.0
+			}
+			fmt.Printf("  • %-16s: IDR %12.2f (%2d txs, %5.1f%%)\n", b.Category, b.Total, b.Count, pct)
+		}
 	}
 }
 

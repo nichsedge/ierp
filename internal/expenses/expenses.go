@@ -48,13 +48,19 @@ type CategoryBreakdown struct {
 	Count    int     `json:"count"`
 }
 
-// ExpenseSummary represents an aggregated spending summary.
+// ExpenseSummary represents an aggregated cash flow summary.
 type ExpenseSummary struct {
-	Period     string              `json:"period"`
-	Total      float64             `json:"total"`
-	Count      int                 `json:"count"`
-	Currency   string              `json:"currency"`
-	ByCategory []CategoryBreakdown `json:"by_category"`
+	Period           string              `json:"period"`
+	TotalExpense     float64             `json:"total_expense"`
+	ExpenseCount     int                 `json:"expense_count"`
+	TotalIncome      float64             `json:"total_income"`
+	IncomeCount      int                 `json:"income_count"`
+	NetCashFlow      float64             `json:"net_cash_flow"`
+	Total            float64             `json:"total"` // backwards-compatible alias for TotalExpense
+	Count            int                 `json:"count"` // backwards-compatible alias for ExpenseCount
+	Currency         string              `json:"currency"`
+	ByCategory       []CategoryBreakdown `json:"by_category"`
+	IncomeByCategory []CategoryBreakdown `json:"income_by_category,omitempty"`
 }
 
 // InsertExpense records a single expense transaction.
@@ -75,8 +81,18 @@ func InsertExpense(database *sql.DB, e Expense) (int, error) {
 	if e.Source == "" {
 		e.Source = "manual"
 	}
+
+	// Auto-infer type if not explicitly set
 	if e.Type == "" {
-		e.Type = "EXPENSE"
+		lowerTags := strings.ToLower(e.Tags)
+		lowerCat := strings.ToLower(e.Category)
+		if strings.Contains(lowerTags, "income") || lowerCat == "income" || lowerCat == "salary" || lowerCat == "dividend" || lowerCat == "freelance" || lowerCat == "revenue" {
+			e.Type = "INCOME"
+		} else if strings.Contains(lowerTags, "transfer") {
+			e.Type = "TRANSFER"
+		} else {
+			e.Type = "EXPENSE"
+		}
 	}
 	e.Type = strings.ToUpper(strings.TrimSpace(e.Type))
 
@@ -177,14 +193,20 @@ func ListExpenses(database *sql.DB, opts ListOptions) ([]Expense, error) {
 		args = append(args, strings.ToLower(strings.TrimSpace(opts.Category)))
 	}
 
-	if opts.Type != "" {
+	if opts.Type != "" && strings.ToUpper(opts.Type) != "ALL" {
 		conditions = append(conditions, "type = ?")
 		args = append(args, strings.ToUpper(strings.TrimSpace(opts.Type)))
 	}
 
 	if opts.Tag != "" {
-		conditions = append(conditions, "tags LIKE ?")
-		args = append(args, "%"+strings.TrimSpace(opts.Tag)+"%")
+		tagLower := strings.ToLower(strings.TrimSpace(opts.Tag))
+		if tagLower == "income" || tagLower == "expense" || tagLower == "transfer" {
+			conditions = append(conditions, "(tags LIKE ? OR type = ?)")
+			args = append(args, "%"+tagLower+"%", strings.ToUpper(tagLower))
+		} else {
+			conditions = append(conditions, "tags LIKE ?")
+			args = append(args, "%"+strings.TrimSpace(opts.Tag)+"%")
+		}
 	}
 
 	if opts.Month != "" {
@@ -266,48 +288,81 @@ func GetSummary(database *sql.DB, month, startDate, endDate string) (*ExpenseSum
 		periodLabel = fmt.Sprintf("%s to %s", startDate, endDate)
 	}
 
-	whereClause := ""
+	whereBase := ""
 	if len(conditions) > 0 {
-		whereClause = "WHERE " + strings.Join(conditions, " AND ")
+		whereBase = " AND " + strings.Join(conditions, " AND ")
 	}
-
-	// 1. Total and count
-	totQuery := fmt.Sprintf(`
-		SELECT COALESCE(SUM(amount), 0), COUNT(*)
-		FROM expenses
-		%s
-	`, whereClause)
 
 	summary := &ExpenseSummary{
 		Period:   periodLabel,
 		Currency: "IDR",
 	}
 
-	if err := database.QueryRow(totQuery, args...).Scan(&summary.Total, &summary.Count); err != nil {
+	// 1. Total Expenses and count
+	expQuery := fmt.Sprintf(`
+		SELECT COALESCE(SUM(amount), 0), COUNT(*)
+		FROM expenses
+		WHERE (type = 'EXPENSE' OR type IS NULL OR type = '') %s
+	`, whereBase)
+	if err := database.QueryRow(expQuery, args...).Scan(&summary.TotalExpense, &summary.ExpenseCount); err != nil {
 		return nil, fmt.Errorf("failed calculating total expense: %w", err)
 	}
 
-	// 2. Breakdown by category
-	catQuery := fmt.Sprintf(`
+	// 2. Total Income and count
+	incQuery := fmt.Sprintf(`
+		SELECT COALESCE(SUM(amount), 0), COUNT(*)
+		FROM expenses
+		WHERE type = 'INCOME' %s
+	`, whereBase)
+	if err := database.QueryRow(incQuery, args...).Scan(&summary.TotalIncome, &summary.IncomeCount); err != nil {
+		return nil, fmt.Errorf("failed calculating total income: %w", err)
+	}
+
+	summary.NetCashFlow = summary.TotalIncome - summary.TotalExpense
+	summary.Total = summary.TotalExpense
+	summary.Count = summary.ExpenseCount
+
+	// 3. Breakdown by category for Expenses
+	expCatQuery := fmt.Sprintf(`
 		SELECT category, COALESCE(SUM(amount), 0) AS cat_total, COUNT(*) AS cat_count
 		FROM expenses
-		%s
+		WHERE (type = 'EXPENSE' OR type IS NULL OR type = '') %s
 		GROUP BY category
 		ORDER BY cat_total DESC
-	`, whereClause)
+	`, whereBase)
 
-	rows, err := database.Query(catQuery, args...)
+	expRows, err := database.Query(expCatQuery, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed calculating category breakdown: %w", err)
+		return nil, fmt.Errorf("failed calculating expense category breakdown: %w", err)
 	}
-	defer rows.Close()
+	defer expRows.Close()
 
-	for rows.Next() {
+	for expRows.Next() {
 		var b CategoryBreakdown
-		if err := rows.Scan(&b.Category, &b.Total, &b.Count); err != nil {
+		if err := expRows.Scan(&b.Category, &b.Total, &b.Count); err != nil {
 			return nil, err
 		}
 		summary.ByCategory = append(summary.ByCategory, b)
+	}
+
+	// 4. Breakdown by category for Income
+	incCatQuery := fmt.Sprintf(`
+		SELECT category, COALESCE(SUM(amount), 0) AS cat_total, COUNT(*) AS cat_count
+		FROM expenses
+		WHERE type = 'INCOME' %s
+		GROUP BY category
+		ORDER BY cat_total DESC
+	`, whereBase)
+
+	incRows, err := database.Query(incCatQuery, args...)
+	if err == nil {
+		defer incRows.Close()
+		for incRows.Next() {
+			var b CategoryBreakdown
+			if err := incRows.Scan(&b.Category, &b.Total, &b.Count); err == nil {
+				summary.IncomeByCategory = append(summary.IncomeByCategory, b)
+			}
+		}
 	}
 
 	return summary, nil
@@ -363,8 +418,8 @@ func ingestJSON(database *sql.DB, content, fileName, defaultTag string) (*Ingest
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO expenses (date, title, amount, currency, category, account, notes, tags, source)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO expenses (date, title, amount, currency, category, account, notes, tags, type, source)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return nil, err
@@ -456,7 +511,17 @@ func ingestJSON(database *sql.DB, content, fileName, defaultTag string) (*Ingest
 		}
 		tagsStr := strings.Join(tagsList, ",")
 
-		if _, err := stmt.Exec(dateStr, title, amt, currency, category, account, notes, tagsStr, "json:"+fileName); err != nil {
+		// Infer or extract type
+		itemType := "EXPENSE"
+		if t, ok := item["type"]; ok && fmt.Sprintf("%v", t) != "" {
+			itemType = strings.ToUpper(fmt.Sprintf("%v", t))
+		} else if strings.Contains(strings.ToLower(tagsStr), "income") || strings.ToLower(category) == "income" || strings.ToLower(category) == "salary" || strings.ToLower(category) == "dividend" || strings.ToLower(category) == "freelance" {
+			itemType = "INCOME"
+		} else if strings.Contains(strings.ToLower(tagsStr), "transfer") {
+			itemType = "TRANSFER"
+		}
+
+		if _, err := stmt.Exec(dateStr, title, amt, currency, category, account, notes, tagsStr, itemType, "json:"+fileName); err != nil {
 			return nil, fmt.Errorf("failed executing insert for %s: %w", title, err)
 		}
 
@@ -469,9 +534,12 @@ func ingestJSON(database *sql.DB, content, fileName, defaultTag string) (*Ingest
 			Account:  account,
 			Notes:    notes,
 			Tags:     tagsStr,
+			Type:     itemType,
 			Source:   "json:" + fileName,
 		})
-		total += amt
+		if itemType == "EXPENSE" {
+			total += amt
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -531,7 +599,7 @@ func ingestMarkdown(database *sql.DB, content, fileName, defaultTag string) (*In
 
 	// Parse header to find column indexes
 	headerCols := splitTableRow(tableLines[0])
-	catIdx, detailsIdx, idrIdx, sgdIdx := -1, -1, -1, -1
+	catIdx, detailsIdx, idrIdx, sgdIdx, typeIdx := -1, -1, -1, -1, -1
 
 	for idx, col := range headerCols {
 		cl := strings.ToLower(col)
@@ -543,6 +611,8 @@ func ingestMarkdown(database *sql.DB, content, fileName, defaultTag string) (*In
 			idrIdx = idx
 		} else if strings.Contains(cl, "sgd") {
 			sgdIdx = idx
+		} else if strings.Contains(cl, "type") || strings.Contains(cl, "kind") || strings.Contains(cl, "flow") {
+			typeIdx = idx
 		}
 	}
 
@@ -557,8 +627,8 @@ func ingestMarkdown(database *sql.DB, content, fileName, defaultTag string) (*In
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO expenses (date, title, amount, currency, category, account, notes, tags, source)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO expenses (date, title, amount, currency, category, account, notes, tags, type, source)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return nil, err
@@ -638,7 +708,22 @@ func ingestMarkdown(database *sql.DB, content, fileName, defaultTag string) (*In
 		notes := strings.Join(notesParts, " | ")
 		tags := fmt.Sprintf("%s,%s", tag, category)
 
-		if _, err := stmt.Exec(entryDate, title, amount, currency, category, "", notes, tags, "markdown:"+fileName); err != nil {
+		// Infer or extract row type
+		rowType := "EXPENSE"
+		if typeIdx >= 0 && typeIdx < len(cols) {
+			tVal := strings.ToUpper(cleanMarkdownCell(cols[typeIdx]))
+			if tVal == "INCOME" || tVal == "EXPENSE" || tVal == "TRANSFER" {
+				rowType = tVal
+			}
+		}
+		if rowType == "EXPENSE" {
+			lowerAll := strings.ToLower(catRaw + " " + title + " " + tags)
+			if strings.Contains(lowerAll, "income") || strings.Contains(lowerAll, "salary") || strings.Contains(lowerAll, "dividend") || strings.Contains(lowerAll, "freelance") {
+				rowType = "INCOME"
+			}
+		}
+
+		if _, err := stmt.Exec(entryDate, title, amount, currency, category, "", notes, tags, rowType, "markdown:"+fileName); err != nil {
 			return nil, fmt.Errorf("failed inserting table row '%s': %w", title, err)
 		}
 
@@ -650,9 +735,12 @@ func ingestMarkdown(database *sql.DB, content, fileName, defaultTag string) (*In
 			Category: category,
 			Notes:    notes,
 			Tags:     tags,
+			Type:     rowType,
 			Source:   "markdown:" + fileName,
 		})
-		total += amount
+		if rowType == "EXPENSE" {
+			total += amount
+		}
 	}
 
 	if err := tx.Commit(); err != nil {

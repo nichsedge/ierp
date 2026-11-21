@@ -179,3 +179,89 @@ func TestIngestJSON(t *testing.T) {
 		t.Fatalf("expected total 49000, got %f", res.Total)
 	}
 }
+
+func TestExpenseAndIncomeTypes(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// 1. Explicit Expense
+	_, err := InsertExpense(db, Expense{
+		Date:     "2026-11-01",
+		Title:    "Groceries",
+		Amount:   500000,
+		Category: "food",
+		Type:     "EXPENSE",
+	})
+	if err != nil {
+		t.Fatalf("insert expense failed: %v", err)
+	}
+
+	// 2. Explicit Income
+	_, err = InsertExpense(db, Expense{
+		Date:     "2026-11-02",
+		Title:    "Consulting Retainer",
+		Amount:   15000000,
+		Category: "salary",
+		Type:     "INCOME",
+	})
+	if err != nil {
+		t.Fatalf("insert income failed: %v", err)
+	}
+
+	// 3. Auto-inferred Income from tag
+	id3, err := InsertExpense(db, Expense{
+		Date:     "2026-11-03",
+		Title:    "Affiliate Payout",
+		Amount:   2000000,
+		Category: "general",
+		Tags:     "passive,income",
+	})
+	if err != nil {
+		t.Fatalf("insert with income tag failed: %v", err)
+	}
+	e3, _ := GetExpenseByID(db, id3)
+	if e3.Type != "INCOME" {
+		t.Fatalf("expected auto-inferred type 'INCOME', got '%s'", e3.Type)
+	}
+
+	// 4. Test List filtering by Type
+	expensesOnly, err := ListExpenses(db, ListOptions{Type: "EXPENSE"})
+	if err != nil {
+		t.Fatalf("list expenses failed: %v", err)
+	}
+	if len(expensesOnly) != 1 || expensesOnly[0].Title != "Groceries" {
+		t.Fatalf("expected 1 expense item, got %d", len(expensesOnly))
+	}
+
+	incomeOnly, err := ListExpenses(db, ListOptions{Type: "INCOME"})
+	if err != nil {
+		t.Fatalf("list income failed: %v", err)
+	}
+	if len(incomeOnly) != 2 {
+		t.Fatalf("expected 2 income items, got %d", len(incomeOnly))
+	}
+
+	// 5. Test Tag filtering for income / expense
+	taggedIncome, err := ListExpenses(db, ListOptions{Tag: "income"})
+	if err != nil {
+		t.Fatalf("list tagged income failed: %v", err)
+	}
+	if len(taggedIncome) != 2 {
+		t.Fatalf("expected 2 items for tag 'income', got %d", len(taggedIncome))
+	}
+
+	// 6. Test Summary Cash Flow
+	sum, err := GetSummary(db, "2026-11", "", "")
+	if err != nil {
+		t.Fatalf("get summary failed: %v", err)
+	}
+	if sum.TotalExpense != 500000 {
+		t.Errorf("expected TotalExpense 500000, got %f", sum.TotalExpense)
+	}
+	if sum.TotalIncome != 17000000 {
+		t.Errorf("expected TotalIncome 17000000, got %f", sum.TotalIncome)
+	}
+	if sum.NetCashFlow != 16500000 {
+		t.Errorf("expected NetCashFlow 16500000, got %f", sum.NetCashFlow)
+	}
+}

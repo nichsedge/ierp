@@ -259,6 +259,7 @@
       month: '',
       category: '',
       tag: '',
+      type: '',
       loading: false
     },
     radar: {
@@ -813,16 +814,18 @@
     },
 
     // Expenses Loader
-    async loadExpenses(month = '', category = '', tag = '') {
+    async loadExpenses(month = '', category = '', tag = '', type = '') {
       this.expenses.month = month;
       this.expenses.category = category;
       this.expenses.tag = tag;
+      this.expenses.type = type;
       this.expenses.loading = true;
       try {
         const params = new URLSearchParams();
         if (month) params.set('month', month);
         if (category) params.set('category', category);
         if (tag) params.set('tag', tag);
+        if (type) params.set('type', type);
         const res = await fetch('/api/expenses?' + params.toString());
         const data = await res.json();
         this.expenses.items = data.items || [];
@@ -837,12 +840,12 @@
     },
 
     async deleteExpense(id) {
-      if (!confirm(`Delete expense #${id}?`)) return;
+      if (!confirm(`Delete transaction #${id}?`)) return;
       try {
         const res = await fetch(`/api/expenses/${id}`, { method: 'DELETE' });
         if (res.ok) {
-          this.showToast('Expense deleted');
-          this.loadExpenses(this.expenses.month, this.expenses.category, this.expenses.tag);
+          this.showToast('Transaction deleted');
+          this.loadExpenses(this.expenses.month, this.expenses.category, this.expenses.tag, this.expenses.type);
         } else {
           this.showToast('Failed to delete expense');
         }

@@ -639,6 +639,7 @@ func (s *Server) handleExpenses(w http.ResponseWriter, r *http.Request) {
 		month := r.URL.Query().Get("month")
 		cat := r.URL.Query().Get("category")
 		tag := r.URL.Query().Get("tag")
+		expType := r.URL.Query().Get("type")
 		limit := 50
 		if l := r.URL.Query().Get("limit"); l != "" {
 			if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
@@ -650,6 +651,7 @@ func (s *Server) handleExpenses(w http.ResponseWriter, r *http.Request) {
 			Limit:    limit,
 			Category: cat,
 			Tag:      tag,
+			Type:     expType,
 			Month:    month,
 		})
 		if err != nil {

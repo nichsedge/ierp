@@ -120,9 +120,10 @@ ierp dashboard --port 8921
 | `ierp snapshots` | List historical net worth balance snapshots. |
 | `ierp insert-commitment` | Record a recurring burn commitment (`--name`, `--amount`, `--frequency`, `--category`). |
 | `ierp commitments` | List recurring financial commitments and monthly normalized burn. |
-| `ierp expense add` | Record an expense transaction (`--title`, `--amount`, `--category`, `--date`, `--currency`, `--tags`). |
-| `ierp expense list` | List recent expenses with filters (`--limit`, `--category`, `--tag`, `--month`, `--json`). |
-| `ierp expense summary` | Aggregated expense summary and category breakdown (`--month`, `--start`, `--end`, `--json`). |
+| `ierp expense add` | Record an expense transaction (`--title`, `--amount`, `--category`, `--date`, `--currency`, `--tags`, `--type`). |
+| `ierp income [add|list]` | Shorthand wrapper to record or inspect income streams (`--title`, `--amount`, etc.). |
+| `ierp expense list` | List recent transactions with filters (`--limit`, `--category`, `--tag`, `--type`, `--month`, `--json`). |
+| `ierp expense summary` | Cash flow breakdown: total expenses, total income, and net cash flow (`--month`, `--start`, `--end`, `--json`). |
 | `ierp expense ingest <file>` | Ingest expenses directly from Markdown travelogue tables or JSON snapshot files (`--tag`). |
 | `ierp expense backfill [path]` | Migrate historical SansFinance SQLite accounts and transactions into iERP. |
 | `ierp expense delete --id <ID>` | Permanently remove an expense record. |
