@@ -26,14 +26,8 @@ func Open(dbPath string) (*sql.DB, error) {
 		}
 
 		database := sql.OpenDB(connector)
-
-		if _, err := database.Exec("PRAGMA foreign_keys = ON;"); err != nil {
-			database.Close()
-			return nil, fmt.Errorf("failed executing PRAGMA foreign_keys = ON: %w", err)
-		}
-
 		database.SetMaxOpenConns(10)
-		database.SetMaxIdleConns(5)
+		database.SetMaxIdleConns(0)
 		return database, nil
 	}
 

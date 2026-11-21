@@ -174,83 +174,108 @@ func SyncGitHubRepos(ctx context.Context, db *sql.DB) (int, error) {
 
 		nodes := resp.Data.Viewer.Repositories.Nodes
 		if len(nodes) > 0 {
-			tx, err := db.BeginTx(ctx, nil)
-			if err != nil {
-				return totalSynced, fmt.Errorf("failed starting transaction: %w", err)
-			}
-
-			stmt, err := tx.PrepareContext(ctx, upsertQuery)
-			if err != nil {
-				_ = tx.Rollback()
-				return totalSynced, fmt.Errorf("failed preparing upsert statement in tx: %w", err)
-			}
-
-			for _, n := range nodes {
-				var topics []string
-				for _, tn := range n.RepositoryTopics.Nodes {
-					if tn.Topic.Name != "" {
-						topics = append(topics, tn.Topic.Name)
-					}
-				}
-				topicsJSON, _ := json.Marshal(topics)
-
-				var lang string
-				if n.PrimaryLanguage != nil {
-					lang = n.PrimaryLanguage.Name
-				}
-
-				var desc string
-				if n.Description != nil {
-					desc = *n.Description
-				}
-
-				var homepage string
-				if n.HomepageURL != nil {
-					homepage = *n.HomepageURL
-				}
-
-				var pushedAt string
-				if n.PushedAt != nil {
-					pushedAt = *n.PushedAt
-				}
-
-				var defaultBranch, defaultBranchOID string
-				if n.DefaultBranchRef != nil {
-					defaultBranch = n.DefaultBranchRef.Name
-					if n.DefaultBranchRef.Target != nil {
-						defaultBranchOID = n.DefaultBranchRef.Target.OID
-					}
-				}
-
-				var licSPDX, licName string
-				if n.LicenseInfo != nil {
-					licName = n.LicenseInfo.Name
-					if n.LicenseInfo.SpdxID != nil {
-						licSPDX = *n.LicenseInfo.SpdxID
-					}
-				}
-
-				_, err := stmt.ExecContext(ctx,
-					n.ID, n.Name, n.NameWithOwner, n.Owner.Login, n.Owner.URL, n.URL,
-					homepage, desc, string(topicsJSON), lang,
-					boolToInt(n.IsPrivate), boolToInt(n.IsFork), boolToInt(n.IsArchived),
-					boolToInt(n.IsTemplate), boolToInt(n.IsDisabled),
-					n.CreatedAt, n.UpdatedAt, pushedAt,
-					defaultBranch, defaultBranchOID,
-					n.StargazerCount, n.Watchers.TotalCount, n.ForkCount,
-					n.Issues.TotalCount, n.PullRequests.TotalCount,
-					licSPDX, licName,
-				)
+			var lastTxErr error
+			for attempt := 1; attempt <= 3; attempt++ {
+				tx, err := db.BeginTx(ctx, nil)
 				if err != nil {
-					_ = stmt.Close()
-					_ = tx.Rollback()
-					return totalSynced, fmt.Errorf("failed upserting repo %s: %w", n.NameWithOwner, err)
+					lastTxErr = fmt.Errorf("failed starting transaction (attempt %d): %w", attempt, err)
+					time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+					continue
 				}
-				totalSynced++
+
+				stmt, err := tx.PrepareContext(ctx, upsertQuery)
+				if err != nil {
+					_ = tx.Rollback()
+					lastTxErr = fmt.Errorf("failed preparing upsert statement in tx: %w", err)
+					time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+					continue
+				}
+
+				pageSynced := 0
+				var pageErr error
+				for _, n := range nodes {
+					var topics []string
+					for _, tn := range n.RepositoryTopics.Nodes {
+						if tn.Topic.Name != "" {
+							topics = append(topics, tn.Topic.Name)
+						}
+					}
+					topicsJSON, _ := json.Marshal(topics)
+
+					var lang string
+					if n.PrimaryLanguage != nil {
+						lang = n.PrimaryLanguage.Name
+					}
+
+					var desc string
+					if n.Description != nil {
+						desc = *n.Description
+					}
+
+					var homepage string
+					if n.HomepageURL != nil {
+						homepage = *n.HomepageURL
+					}
+
+					var pushedAt string
+					if n.PushedAt != nil {
+						pushedAt = *n.PushedAt
+					}
+
+					var defaultBranch, defaultBranchOID string
+					if n.DefaultBranchRef != nil {
+						defaultBranch = n.DefaultBranchRef.Name
+						if n.DefaultBranchRef.Target != nil {
+							defaultBranchOID = n.DefaultBranchRef.Target.OID
+						}
+					}
+
+					var licSPDX, licName string
+					if n.LicenseInfo != nil {
+						licName = n.LicenseInfo.Name
+						if n.LicenseInfo.SpdxID != nil {
+							licSPDX = *n.LicenseInfo.SpdxID
+						}
+					}
+
+					_, err := stmt.ExecContext(ctx,
+						n.ID, n.Name, n.NameWithOwner, n.Owner.Login, n.Owner.URL, n.URL,
+						homepage, desc, string(topicsJSON), lang,
+						boolToInt(n.IsPrivate), boolToInt(n.IsFork), boolToInt(n.IsArchived),
+						boolToInt(n.IsTemplate), boolToInt(n.IsDisabled),
+						n.CreatedAt, n.UpdatedAt, pushedAt,
+						defaultBranch, defaultBranchOID,
+						n.StargazerCount, n.Watchers.TotalCount, n.ForkCount,
+						n.Issues.TotalCount, n.PullRequests.TotalCount,
+						licSPDX, licName,
+					)
+					if err != nil {
+						pageErr = fmt.Errorf("failed upserting repo %s: %w", n.NameWithOwner, err)
+						break
+					}
+					pageSynced++
+				}
+				_ = stmt.Close()
+
+				if pageErr != nil {
+					_ = tx.Rollback()
+					lastTxErr = pageErr
+					time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+					continue
+				}
+
+				if err := tx.Commit(); err != nil {
+					lastTxErr = fmt.Errorf("failed committing repo upserts: %w", err)
+					time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+					continue
+				}
+
+				totalSynced += pageSynced
+				lastTxErr = nil
+				break
 			}
-			_ = stmt.Close()
-			if err := tx.Commit(); err != nil {
-				return totalSynced, fmt.Errorf("failed committing repo upserts: %w", err)
+			if lastTxErr != nil {
+				return totalSynced, lastTxErr
 			}
 		}
 
