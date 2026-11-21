@@ -1,20 +1,14 @@
 package commerce
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-)
 
-func writeFileIfChanged(path string, data []byte) error {
-	if existing, err := os.ReadFile(path); err == nil && bytes.Equal(existing, data) {
-		return nil
-	}
-	return os.WriteFile(path, data, 0644)
-}
+	"github.com/nichsedge/ierp/internal/config"
+)
 
 // ExportCommerceFiles exports pay.json and referrals.json to the portfolio data directory.
 func ExportCommerceFiles(database *sql.DB, targetDir string) (payCount int, refCount int, err error) {
@@ -69,7 +63,7 @@ func ExportCommerceFiles(database *sql.DB, targetDir string) (payCount int, refC
 		return 0, 0, err
 	}
 	payFile := filepath.Join(targetDir, "pay.json")
-	if err := writeFileIfChanged(payFile, payJSONData); err != nil {
+	if err := config.WriteFileIfChanged(payFile, payJSONData); err != nil {
 		return 0, 0, fmt.Errorf("failed writing pay.json: %w", err)
 	}
 
@@ -110,7 +104,7 @@ func ExportCommerceFiles(database *sql.DB, targetDir string) (payCount int, refC
 		return len(payList), 0, err
 	}
 	refFile := filepath.Join(targetDir, "referrals.json")
-	if err := writeFileIfChanged(refFile, refJSONData); err != nil {
+	if err := config.WriteFileIfChanged(refFile, refJSONData); err != nil {
 		return len(payList), 0, fmt.Errorf("failed writing referrals.json: %w", err)
 	}
 

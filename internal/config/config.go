@@ -1,8 +1,10 @@
 package config
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // ANSI terminal colors
@@ -100,4 +102,14 @@ func MediaDir() string {
 	}
 
 	return "events_media"
+}
+
+// WriteFileIfChanged writes data to path only if the content changed, or updates mtime if already identical.
+func WriteFileIfChanged(path string, data []byte) error {
+	if existing, err := os.ReadFile(path); err == nil && bytes.Equal(existing, data) {
+		now := time.Now()
+		_ = os.Chtimes(path, now, now)
+		return nil
+	}
+	return os.WriteFile(path, data, 0644)
 }
