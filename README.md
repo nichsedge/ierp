@@ -102,8 +102,11 @@ ierp audit
 ierp export-garden
 ierp export-commerce
 
-# Launch Embedded Web Dashboard (zero build pipeline, embedded Petite-Vue)
+# Launch Embedded Web Dashboard (default 127.0.0.1, optional --tailscale or --token)
 ierp dashboard --port 8921
+
+# Expose securely over Tailscale with authentication token
+ierp dashboard --tailscale --token my-secret-token
 ```
 
 ---
@@ -163,7 +166,7 @@ ierp dashboard --port 8921
 | `ierp export gh-projects` | Export all repositories to `nichsedge.github.io/data/github_repos_all.json`. |
 | `ierp export check [--fix]` | Downstream Export Guardrail: validate freshness of `pay.json`, `referrals.json`, `github_repos_all.json` against database. |
 | `ierp r2 [status\|push\|pull\|auto]` | Cold archive Cloudflare R2 synchronization (Tier 1 SSOT remains on Turso libSQL Cloud). |
-| `ierp dashboard` | Launch zero-dependency embedded web dashboard server (`--port`, `--host`). |
+| `ierp dashboard` | Launch zero-dependency embedded web dashboard server (`--port`, `--host`, `--token`, `--tailscale`). Defaults to `127.0.0.1`. |
 
 ---
 

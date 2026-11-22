@@ -71,13 +71,15 @@ Code in `internal/` is organized by bounded domain services:
 | `internal/portfolio`| Automated multi-asset portfolio snapshot ingestion & sovereign runway sync | `networth_snapshots` |
 | `internal/ghrepos` | GitHub GraphQL API repository ingestion & portfolio showcase export | `github_repositories` |
 | `internal/transparency` | Privacy-safe transparency report (allocation & burn percentages, runway metrics) export | `networth_snapshots`, `recurring_commitments` |
-| `cmd/ierp` | Standalone CLI entrypoint with subcommands | CLI Dispatcher |
+| `internal/commands` | Modular CLI command layer with testable `Run(ctx, args, stdout, stderr) error` | All |
+| `cmd/ierp` | Thin binary entrypoint delegating to `commands.Run` | CLI Dispatcher |
 
 ---
 
-## ⚡ SQLite WAL & FTS5 Full-Text Search Engine
+## ⚡ SQLite WAL, FTS5 & Versioned Atomic Migrations Engine
 
 * **Local SQLite with WAL Mode**: All database connections MUST use WAL (`PRAGMA journal_mode = WAL;`) and busy timeouts (`PRAGMA busy_timeout = 5000;`) to guarantee non-blocking concurrent reads and writes between background tasks and the web dashboard.
+* **Versioned Transactional Migrations**: Database schema migrations live in `internal/db` and are executed within atomic transactions (`tx.Begin()`), recording applied versions in `schema_migrations`. Migrations fail loudly and abort on error without leaving partial state or swallowing `ALTER TABLE` failures.
 * **Cadence & Tier SSOT**: Dunbar relationship tier cadences are centrally defined in `contacts.DefaultCadenceByTier` (Tier 0: 0d Untracked, Tier 1: 14d, Tier 2: 60d, Tier 3: 180d) and reused across CRM and Radar domains.
 * **Atomic Life Operations**: Life ops and maintenance auto-rescheduling must execute within a single database transaction (`tx.Begin()`), validating date formats upfront before any mutation.
 * **FTS5 Full-Text Search Virtual Table**: The `events_fts` external content virtual table indexes timeline events and notes in real-time using automatic SQLite triggers (`events_ai`, `events_ad`, `events_au`) and provides BM25 relevance ranking (`bm25(events_fts)`).
@@ -88,10 +90,18 @@ Code in `internal/` is organized by bounded domain services:
 
 ---
 
-## 🎨 Dashboard Architecture & Embedded Assets
+## 🎨 Dashboard Architecture, Security & HTTP Operations Hardening
 
 * **Single-Binary Zero-Build Deployment**: The dashboard uses Go 1.16+ `embed.FS` to vendor all templates and static assets (`Petite-Vue`, CSS, JS) directly inside the compiled binary.
-* **Offline-First & Tailscale Access**: Fully offline-capable without external CDN dependencies. Accessible across Tailscale devices.
+* **Security & Network Boundary**:
+  - Defaults strictly to loopback `127.0.0.1` (never `0.0.0.0`).
+  - Automated Tailscale exposure: passing `--tailscale` automatically queries local network interfaces for Tailscale IPv4 addresses in `100.64.0.0/10` and binds explicitly to that interface.
+  - Auth Token Protection: all `/api/*` and `/webhook/*` mutating/reading endpoints are protected with constant-time token comparison (`crypto/subtle.ConstantTimeCompare`). The token is accepted via `Authorization: Bearer <token>`, `X-Auth-Token`, query parameter `?token=`, or cookie `ierp_token`. Visiting `/?token=...` automatically sets an `HttpOnly` `SameSite=Lax` cookie and strips the token from the URL bar.
+  - Automatic Auth Token Generation: if the server is exposed beyond localhost without an explicit `--token` or `IERP_AUTH_TOKEN`, a secure 32-character random token is generated and logged to stderr.
+* **HTTP Hardening**:
+  - Managed `http.Server` with active `ReadTimeout` (15s), `ReadHeaderTimeout` (5s), `WriteTimeout` (30s), and `IdleTimeout` (60s).
+  - Strict 1 MB request body cap (`http.MaxBytesReader`) and unknown field rejection (`dec.DisallowUnknownFields()`) across all mutating API and webhook handlers.
+  - Decoupled router construction: `Server.Handler()` builds the `http.Handler` independently of `Start()`, tested via comprehensive `httptest` contract suites (`internal/dashboard/dashboard_test.go`).
 * **Separation of Concerns**:
   - `internal/dashboard/assets/templates/dashboard.html`: Declarative markup using Petite-Vue directives.
   - `internal/dashboard/assets/static/css/dashboard.css`: Design system, glassmorphism cards, responsive layouts.

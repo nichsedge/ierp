@@ -414,9 +414,9 @@ func InitDB(dbPath string, verbose bool) error {
 		return fmt.Errorf("failed executing initial schema: %w", err)
 	}
 
-	// Idempotent column migrations
-	if err := migrateColumns(database); err != nil {
-		return fmt.Errorf("failed running column migrations: %w", err)
+	// Versioned transactional schema migrations
+	if err := Migrate(database); err != nil {
+		return fmt.Errorf("failed running database migrations: %w", err)
 	}
 
 	indexes := `
@@ -516,79 +516,149 @@ func InitDB(dbPath string, verbose bool) error {
 	return nil
 }
 
-func migrateColumns(database *sql.DB) error {
-	// Contacts columns
-	contactsCols, err := getTableColumns(database, "contacts")
-	if err == nil {
-		if !contactsCols["email"] {
-			_, _ = database.Exec("ALTER TABLE contacts ADD COLUMN email TEXT;")
-		}
-		if !contactsCols["phone"] {
-			_, _ = database.Exec("ALTER TABLE contacts ADD COLUMN phone TEXT;")
-		}
-		if !contactsCols["google_id"] {
-			_, _ = database.Exec("ALTER TABLE contacts ADD COLUMN google_id TEXT;")
-		}
-		if !contactsCols["source"] {
-			_, _ = database.Exec("ALTER TABLE contacts ADD COLUMN source TEXT DEFAULT 'manual';")
-		}
-		if !contactsCols["tier"] {
-			_, _ = database.Exec("ALTER TABLE contacts ADD COLUMN tier INTEGER DEFAULT 0;")
-		}
-		if !contactsCols["cadence_days"] {
-			_, _ = database.Exec("ALTER TABLE contacts ADD COLUMN cadence_days INTEGER DEFAULT 0;")
-		}
+type migration struct {
+	version     int
+	description string
+	apply       func(tx *sql.Tx) error
+}
+
+var schemaMigrations = []migration{
+	{
+		version:     1,
+		description: "Add contacts CRM communication, source, and tier columns",
+		apply: func(tx *sql.Tx) error {
+			cols := []struct {
+				name string
+				def  string
+			}{
+				{"email", "TEXT"},
+				{"phone", "TEXT"},
+				{"google_id", "TEXT"},
+				{"source", "TEXT DEFAULT 'manual'"},
+				{"tier", "INTEGER DEFAULT 0"},
+				{"cadence_days", "INTEGER DEFAULT 0"},
+			}
+			for _, c := range cols {
+				if err := addColumnIfNotExists(tx, "contacts", c.name, c.def); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
+	{
+		version:     2,
+		description: "Add events project association foreign key",
+		apply: func(tx *sql.Tx) error {
+			return addColumnIfNotExists(tx, "events", "project_id", "INTEGER REFERENCES projects(id) ON DELETE SET NULL")
+		},
+	},
+	{
+		version:     3,
+		description: "Add vendors profile, categorization, and metadata columns",
+		apply: func(tx *sql.Tx) error {
+			cols := []struct {
+				name string
+				def  string
+			}{
+				{"category", "TEXT"},
+				{"phone", "TEXT"},
+				{"email", "TEXT"},
+				{"url", "TEXT"},
+				{"notes", "TEXT"},
+				{"favorite", "INTEGER DEFAULT 0"},
+				{"source", "TEXT DEFAULT 'manual'"},
+			}
+			for _, c := range cols {
+				if err := addColumnIfNotExists(tx, "vendors", c.name, c.def); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
+	{
+		version:     4,
+		description: "Add expenses transaction classification type column",
+		apply: func(tx *sql.Tx) error {
+			return addColumnIfNotExists(tx, "expenses", "type", "TEXT NOT NULL DEFAULT 'EXPENSE'")
+		},
+	},
+}
+
+// Migrate applies all unapplied versioned schema migrations atomically in transactions.
+// If any migration fails, it aborts immediately, rolls back the transaction, and returns the error.
+func Migrate(database *sql.DB) error {
+	createVersionTable := `
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+        version INTEGER PRIMARY KEY,
+        description TEXT NOT NULL,
+        applied_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );`
+	if _, err := database.Exec(createVersionTable); err != nil {
+		return fmt.Errorf("failed creating schema_migrations table: %w", err)
 	}
 
-	// Events columns
-	eventsCols, err := getTableColumns(database, "events")
-	if err == nil {
-		if !eventsCols["project_id"] {
-			_, _ = database.Exec("ALTER TABLE events ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL;")
+	rows, err := database.Query("SELECT version FROM schema_migrations ORDER BY version ASC;")
+	if err != nil {
+		return fmt.Errorf("failed querying schema_migrations: %w", err)
+	}
+	defer rows.Close()
+
+	applied := make(map[int]bool)
+	for rows.Next() {
+		var v int
+		if err := rows.Scan(&v); err != nil {
+			return fmt.Errorf("failed scanning migration version: %w", err)
 		}
+		applied[v] = true
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed reading migration versions: %w", err)
 	}
 
-	// Vendors columns
-	vendorsCols, err := getTableColumns(database, "vendors")
-	if err == nil {
-		if !vendorsCols["category"] {
-			_, _ = database.Exec("ALTER TABLE vendors ADD COLUMN category TEXT;")
+	for _, m := range schemaMigrations {
+		if applied[m.version] {
+			continue
 		}
-		if !vendorsCols["phone"] {
-			_, _ = database.Exec("ALTER TABLE vendors ADD COLUMN phone TEXT;")
-		}
-		if !vendorsCols["email"] {
-			_, _ = database.Exec("ALTER TABLE vendors ADD COLUMN email TEXT;")
-		}
-		if !vendorsCols["url"] {
-			_, _ = database.Exec("ALTER TABLE vendors ADD COLUMN url TEXT;")
-		}
-		if !vendorsCols["notes"] {
-			_, _ = database.Exec("ALTER TABLE vendors ADD COLUMN notes TEXT;")
-		}
-		if !vendorsCols["favorite"] {
-			_, _ = database.Exec("ALTER TABLE vendors ADD COLUMN favorite INTEGER DEFAULT 0;")
-		}
-		if !vendorsCols["source"] {
-			_, _ = database.Exec("ALTER TABLE vendors ADD COLUMN source TEXT DEFAULT 'manual';")
-		}
-	}
 
-	// Expenses columns
-	expensesCols, err := getTableColumns(database, "expenses")
-	if err == nil {
-		if !expensesCols["type"] {
-			_, _ = database.Exec("ALTER TABLE expenses ADD COLUMN type TEXT NOT NULL DEFAULT 'EXPENSE';")
+		tx, err := database.Begin()
+		if err != nil {
+			return fmt.Errorf("failed beginning transaction for migration %d (%s): %w", m.version, m.description, err)
+		}
+
+		if err := m.apply(tx); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("migration %d (%s) failed: %w", m.version, m.description, err)
+		}
+
+		if _, err := tx.Exec("INSERT INTO schema_migrations (version, description) VALUES (?, ?);", m.version, m.description); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("failed recording migration %d (%s): %w", m.version, m.description, err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("failed committing transaction for migration %d (%s): %w", m.version, m.description, err)
 		}
 	}
 
 	return nil
 }
 
-func getTableColumns(database *sql.DB, tableName string) (map[string]bool, error) {
-	rows, err := database.Query(fmt.Sprintf("PRAGMA table_info(%s);", tableName))
+// CurrentSchemaVersion returns the highest applied schema migration version.
+func CurrentSchemaVersion(database *sql.DB) (int, error) {
+	var version int
+	err := database.QueryRow("SELECT COALESCE(MAX(version), 0) FROM schema_migrations;").Scan(&version)
 	if err != nil {
-		return nil, err
+		return 0, err
+	}
+	return version, nil
+}
+
+func getTxTableColumns(tx *sql.Tx, tableName string) (map[string]bool, error) {
+	rows, err := tx.Query(fmt.Sprintf("PRAGMA table_info(%s);", tableName))
+	if err != nil {
+		return nil, fmt.Errorf("failed getting table info for %s: %w", tableName, err)
 	}
 	defer rows.Close()
 
@@ -598,9 +668,25 @@ func getTableColumns(database *sql.DB, tableName string) (map[string]bool, error
 		var name, ctype string
 		var notnull, pk int
 		var dfltValue sql.NullString
-		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err == nil {
-			cols[strings.ToLower(name)] = true
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+			return nil, fmt.Errorf("failed scanning column info for %s: %w", tableName, err)
 		}
+		cols[strings.ToLower(name)] = true
 	}
-	return cols, nil
+	return cols, rows.Err()
+}
+
+func addColumnIfNotExists(tx *sql.Tx, tableName, columnName, columnDef string) error {
+	cols, err := getTxTableColumns(tx, tableName)
+	if err != nil {
+		return err
+	}
+	if cols[strings.ToLower(columnName)] {
+		return nil
+	}
+	query := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s;", tableName, columnName, columnDef)
+	if _, err := tx.Exec(query); err != nil {
+		return fmt.Errorf("failed to add column %s to %s: %w", columnName, tableName, err)
+	}
+	return nil
 }

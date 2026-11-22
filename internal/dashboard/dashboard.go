@@ -1,12 +1,18 @@
 package dashboard
 
 import (
+	"context"
+	"crypto/subtle"
 	"database/sql"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"net"
 	"net/http"
+	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,30 +37,158 @@ import (
 //go:embed assets/*
 var assetsFS embed.FS
 
-// Server encapsulates the web dashboard HTTP server.
-type Server struct {
-	db   *sql.DB
-	port int
-	host string
+// Option configures Server instances.
+type Option func(*Server)
+
+// WithAuthToken configures an authentication token for API, webhook, and dashboard access.
+func WithAuthToken(token string) Option {
+	return func(s *Server) {
+		s.authToken = strings.TrimSpace(token)
+	}
 }
 
-// NewServer initializes a dashboard server.
-func NewServer(database *sql.DB, host string, port int) *Server {
+// Server encapsulates the web dashboard HTTP server.
+type Server struct {
+	db        *sql.DB
+	port      int
+	host      string
+	authToken string
+}
+
+// NewServer initializes a dashboard server. Defaults to 127.0.0.1 and port 8921.
+func NewServer(database *sql.DB, host string, port int, opts ...Option) *Server {
 	if host == "" {
-		host = "0.0.0.0"
+		host = "127.0.0.1"
 	}
 	if port <= 0 {
 		port = 8921
 	}
-	return &Server{
+	s := &Server{
 		db:   database,
 		host: host,
 		port: port,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
-// Start launches the HTTP server listening on the configured host and port.
-func (s *Server) Start() error {
+// GetTailscaleIP attempts to detect the local Tailscale IPv4 address in the 100.64.0.0/10 CGNAT block.
+func GetTailscaleIP() (string, error) {
+	_, tailscaleNet, err := net.ParseCIDR("100.64.0.0/10")
+	if err == nil {
+		ifaces, err := net.Interfaces()
+		if err == nil {
+			for _, iface := range ifaces {
+				addrs, err := iface.Addrs()
+				if err != nil {
+					continue
+				}
+				for _, addr := range addrs {
+					var ip net.IP
+					switch v := addr.(type) {
+					case *net.IPNet:
+						ip = v.IP
+					case *net.IPAddr:
+						ip = v.IP
+					}
+					if ip != nil && ip.To4() != nil && tailscaleNet.Contains(ip) {
+						return ip.String(), nil
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback to calling `tailscale ip -4`
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "tailscale", "ip", "-4")
+	out, err := cmd.Output()
+	if err == nil {
+		ipStr := strings.TrimSpace(string(out))
+		if parsed := net.ParseIP(ipStr); parsed != nil && parsed.To4() != nil {
+			return ipStr, nil
+		}
+	}
+
+	return "", fmt.Errorf("no Tailscale IPv4 address found (ensure Tailscale is running)")
+}
+
+func (s *Server) authenticate(r *http.Request) bool {
+	if s.authToken == "" {
+		return true
+	}
+
+	// 1. Authorization header: "Bearer <token>" or "<token>"
+	if authHeader := r.Header.Get("Authorization"); authHeader != "" {
+		parts := strings.SplitN(authHeader, " ", 2)
+		token := authHeader
+		if len(parts) == 2 && strings.EqualFold(parts[0], "bearer") {
+			token = parts[1]
+		}
+		if subtle.ConstantTimeCompare([]byte(token), []byte(s.authToken)) == 1 {
+			return true
+		}
+	}
+
+	// 2. X-Auth-Token header
+	if token := r.Header.Get("X-Auth-Token"); token != "" {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(s.authToken)) == 1 {
+			return true
+		}
+	}
+
+	// 3. Query parameter: ?token=... or ?auth_token=...
+	if token := r.URL.Query().Get("token"); token != "" {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(s.authToken)) == 1 {
+			return true
+		}
+	}
+	if token := r.URL.Query().Get("auth_token"); token != "" {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(s.authToken)) == 1 {
+			return true
+		}
+	}
+
+	// 4. Cookie: ierp_token=...
+	if cookie, err := r.Cookie("ierp_token"); err == nil && cookie != nil {
+		if subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(s.authToken)) == 1 {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.authenticate(r) {
+			sendError(w, http.StatusUnauthorized, "Unauthorized: invalid or missing auth token")
+			return
+		}
+		next(w, r)
+	}
+}
+
+const maxRequestBodySize = 1 << 20 // 1 MB limit
+
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dst); err != nil {
+		return err
+	}
+	if dec.More() {
+		return errors.New("unexpected extra data after JSON body")
+	}
+	return nil
+}
+
+// Handler builds and returns the configured http.Handler for the dashboard and API routes.
+func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	// Static assets from embedded FS
@@ -70,6 +204,37 @@ func (s *Server) Start() error {
 	}
 
 	renderPage := func(w http.ResponseWriter, r *http.Request) {
+		if s.authToken != "" {
+			if tokenQuery := r.URL.Query().Get("token"); tokenQuery != "" {
+				if subtle.ConstantTimeCompare([]byte(tokenQuery), []byte(s.authToken)) == 1 {
+					http.SetCookie(w, &http.Cookie{
+						Name:     "ierp_token",
+						Value:    tokenQuery,
+						Path:     "/",
+						HttpOnly: true,
+						SameSite: http.SameSiteLaxMode,
+					})
+					u := *r.URL
+					q := u.Query()
+					q.Del("token")
+					u.RawQuery = q.Encode()
+					target := u.RequestURI()
+					if target == "" {
+						target = "/"
+					}
+					http.Redirect(w, r, target, http.StatusFound)
+					return
+				}
+			}
+
+			if !s.authenticate(r) {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.WriteHeader(http.StatusUnauthorized)
+				fmt.Fprintf(w, `<!DOCTYPE html><html><head><title>iERP Dashboard Auth</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{background:#0f172a;color:#f8fafc;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;}form{background:#1e293b;padding:2rem;border-radius:0.75rem;box-shadow:0 10px 25px rgba(0,0,0,0.5);width:100%%;max-width:360px;}h2{margin-top:0;}input{width:100%%;padding:0.75rem;border-radius:0.375rem;border:1px solid #334155;background:#0f172a;color:#fff;margin-bottom:1rem;box-sizing:border-box;}button{width:100%%;padding:0.75rem;border-radius:0.375rem;border:none;background:#2563eb;color:#fff;font-weight:bold;cursor:pointer;}</style></head><body><form method="GET" action="/"><h2>iERP Dashboard</h2><p style="color:#94a3b8;font-size:0.875rem">Authentication token required.</p><input type="password" name="token" placeholder="Enter auth token" required autofocus><button type="submit">Unlock</button></form></body></html>`)
+				return
+			}
+		}
+
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(dashboardHTML)
@@ -91,42 +256,60 @@ func (s *Server) Start() error {
 		http.NotFound(w, r)
 	})
 
-	// REST APIs
-	mux.HandleFunc("/api/stats", s.handleStats)
-	mux.HandleFunc("/api/events", s.handleEvents)
-	mux.HandleFunc("/api/contacts", s.handleContacts)
-	mux.HandleFunc("/api/contacts/automerge", s.handleContactsAutomerge)
-	mux.HandleFunc("/api/contacts/", s.handleContactItem)
-	mux.HandleFunc("/api/radar", s.handleRadar)
-	mux.HandleFunc("/api/radar/daily", s.handleRadarDaily)
-	mux.HandleFunc("/api/radar/summary", s.handleRadarSummary)
-	mux.HandleFunc("/api/runway", s.handleRunway)
-	mux.HandleFunc("/api/finance/snapshots", s.handleFinanceSnapshots)
-	mux.HandleFunc("/api/finance/commitments", s.handleFinanceCommitments)
-	mux.HandleFunc("/api/expenses", s.handleExpenses)
-	mux.HandleFunc("/api/expenses/", s.handleExpenseItem)
-	mux.HandleFunc("/api/projects", s.handleProjects)
-	mux.HandleFunc("/api/decisions", s.handleDecisions)
-	mux.HandleFunc("/api/decisions/", s.handleDecisionItem)
-	mux.HandleFunc("/api/maintenance", s.handleMaintenance)
-	mux.HandleFunc("/api/maintenance/", s.handleMaintenanceItem)
-	mux.HandleFunc("/api/reviews", s.handleReviews)
-	mux.HandleFunc("/api/gadgets", s.handleGadgets)
-	mux.HandleFunc("/api/media", s.handleMedia)
-	mux.HandleFunc("/api/links", s.handleLinks)
-	mux.HandleFunc("/api/places", s.handlePlaces)
-	mux.HandleFunc("/api/vendors", s.handleVendors)
-	mux.HandleFunc("/api/vendors/", s.handleVendorItem)
-	mux.HandleFunc("/api/payment-accounts", s.handleCommerceAccounts)
-	mux.HandleFunc("/api/referrals", s.handleCommerceReferrals)
-	mux.HandleFunc("/api/commerce/accounts", s.handleCommerceAccounts)
-	mux.HandleFunc("/api/commerce/referrals", s.handleCommerceReferrals)
-	mux.HandleFunc("/api/audit", s.handleAudit)
-	mux.HandleFunc("/webhook/location", s.handleLocationWebhook)
+	// REST APIs (authenticated)
+	mux.HandleFunc("/api/stats", s.requireAuth(s.handleStats))
+	mux.HandleFunc("/api/events", s.requireAuth(s.handleEvents))
+	mux.HandleFunc("/api/contacts", s.requireAuth(s.handleContacts))
+	mux.HandleFunc("/api/contacts/automerge", s.requireAuth(s.handleContactsAutomerge))
+	mux.HandleFunc("/api/contacts/", s.requireAuth(s.handleContactItem))
+	mux.HandleFunc("/api/radar", s.requireAuth(s.handleRadar))
+	mux.HandleFunc("/api/radar/daily", s.requireAuth(s.handleRadarDaily))
+	mux.HandleFunc("/api/radar/summary", s.requireAuth(s.handleRadarSummary))
+	mux.HandleFunc("/api/runway", s.requireAuth(s.handleRunway))
+	mux.HandleFunc("/api/finance/snapshots", s.requireAuth(s.handleFinanceSnapshots))
+	mux.HandleFunc("/api/finance/commitments", s.requireAuth(s.handleFinanceCommitments))
+	mux.HandleFunc("/api/expenses", s.requireAuth(s.handleExpenses))
+	mux.HandleFunc("/api/expenses/", s.requireAuth(s.handleExpenseItem))
+	mux.HandleFunc("/api/projects", s.requireAuth(s.handleProjects))
+	mux.HandleFunc("/api/decisions", s.requireAuth(s.handleDecisions))
+	mux.HandleFunc("/api/decisions/", s.requireAuth(s.handleDecisionItem))
+	mux.HandleFunc("/api/maintenance", s.requireAuth(s.handleMaintenance))
+	mux.HandleFunc("/api/maintenance/", s.requireAuth(s.handleMaintenanceItem))
+	mux.HandleFunc("/api/reviews", s.requireAuth(s.handleReviews))
+	mux.HandleFunc("/api/gadgets", s.requireAuth(s.handleGadgets))
+	mux.HandleFunc("/api/media", s.requireAuth(s.handleMedia))
+	mux.HandleFunc("/api/links", s.requireAuth(s.handleLinks))
+	mux.HandleFunc("/api/places", s.requireAuth(s.handlePlaces))
+	mux.HandleFunc("/api/vendors", s.requireAuth(s.handleVendors))
+	mux.HandleFunc("/api/vendors/", s.requireAuth(s.handleVendorItem))
+	mux.HandleFunc("/api/payment-accounts", s.requireAuth(s.handleCommerceAccounts))
+	mux.HandleFunc("/api/referrals", s.requireAuth(s.handleCommerceReferrals))
+	mux.HandleFunc("/api/commerce/accounts", s.requireAuth(s.handleCommerceAccounts))
+	mux.HandleFunc("/api/commerce/referrals", s.requireAuth(s.handleCommerceReferrals))
+	mux.HandleFunc("/api/audit", s.requireAuth(s.handleAudit))
+	mux.HandleFunc("/webhook/location", s.requireAuth(s.handleLocationWebhook))
 
+	return mux
+}
+
+// Start launches the HTTP server listening on the configured host and port.
+func (s *Server) Start() error {
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)
 	fmt.Printf("%s%siERP Web Dashboard running at http://%s%s\n", config.Bold, config.Green, addr, config.Reset)
-	return http.ListenAndServe(addr, mux)
+	if s.authToken != "" {
+		fmt.Printf("%sDashboard authentication enabled.%s\n", config.Cyan, config.Reset)
+	}
+
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           s.Handler(),
+		ReadTimeout:       15 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1 MB
+	}
+	return srv.ListenAndServe()
 }
 
 func sendJSON(w http.ResponseWriter, status int, data any) {
@@ -140,6 +323,10 @@ func sendError(w http.ResponseWriter, status int, msg string) {
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		sendError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
 	var totalEvents, totalLifeEvents, totalContacts, totalMedia, totalLinks int
 	_ = s.db.QueryRow("SELECT COUNT(*) FROM events").Scan(&totalEvents)
 	_ = s.db.QueryRow("SELECT COUNT(*) FROM events WHERE (tags IS NULL OR (tags NOT LIKE '%timeline%' AND tags NOT LIKE '%atracker%' AND tags NOT LIKE '%deepwork%'))").Scan(&totalLifeEvents)
@@ -358,8 +545,8 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			Contacts  []string `json:"contacts"`
 			ProjectID *int     `json:"project_id"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			sendError(w, http.StatusBadRequest, "Invalid JSON")
+		if err := decodeJSON(w, r, &req); err != nil {
+			sendError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 			return
 		}
 		if req.Title == "" {
@@ -432,8 +619,8 @@ func (s *Server) handleContacts(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost {
 		var c contacts.Contact
-		if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
-			sendError(w, http.StatusBadRequest, "Invalid JSON")
+		if err := decodeJSON(w, r, &c); err != nil {
+			sendError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 			return
 		}
 		if c.Name == "" {
@@ -483,8 +670,8 @@ func (s *Server) handleContactItem(w http.ResponseWriter, r *http.Request) {
 			Tier        int `json:"tier"`
 			CadenceDays int `json:"cadence_days"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			sendError(w, http.StatusBadRequest, "Invalid JSON")
+		if err := decodeJSON(w, r, &req); err != nil {
+			sendError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 			return
 		}
 		days := req.CadenceDays
@@ -517,6 +704,10 @@ func (s *Server) handleContactItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRadar(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		sendError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
 	overdueOnly := r.URL.Query().Get("overdue") == "true" || r.URL.Query().Get("overdue_only") == "true"
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
@@ -542,6 +733,10 @@ func (s *Server) handleRadar(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRadarDaily(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		sendError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
 	item, err := radar.GetDailyReconnection(s.db)
 	if err != nil {
 		sendError(w, http.StatusInternalServerError, err.Error())
@@ -551,6 +746,10 @@ func (s *Server) handleRadarDaily(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRadarSummary(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		sendError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
 	summary, err := radar.GetRadarSummary(s.db)
 	if err != nil {
 		sendError(w, http.StatusInternalServerError, err.Error())
@@ -560,6 +759,10 @@ func (s *Server) handleRadarSummary(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRunway(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		sendError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
 	runway, err := finance.ComputeRunway(s.db)
 	if err != nil {
 		sendError(w, http.StatusInternalServerError, err.Error())
@@ -584,8 +787,8 @@ func (s *Server) handleFinanceSnapshots(w http.ResponseWriter, r *http.Request) 
 
 	if r.Method == http.MethodPost {
 		var snap finance.Snapshot
-		if err := json.NewDecoder(r.Body).Decode(&snap); err != nil {
-			sendError(w, http.StatusBadRequest, "Invalid JSON")
+		if err := decodeJSON(w, r, &snap); err != nil {
+			sendError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 			return
 		}
 		id, err := finance.InsertSnapshot(s.db, snap)
@@ -618,8 +821,8 @@ func (s *Server) handleFinanceCommitments(w http.ResponseWriter, r *http.Request
 
 	if r.Method == http.MethodPost {
 		var comm finance.Commitment
-		if err := json.NewDecoder(r.Body).Decode(&comm); err != nil {
-			sendError(w, http.StatusBadRequest, "Invalid JSON")
+		if err := decodeJSON(w, r, &comm); err != nil {
+			sendError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 			return
 		}
 		id, err := finance.InsertCommitment(s.db, comm)
@@ -671,8 +874,8 @@ func (s *Server) handleExpenses(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost {
 		var exp expenses.Expense
-		if err := json.NewDecoder(r.Body).Decode(&exp); err != nil {
-			sendError(w, http.StatusBadRequest, "Invalid JSON")
+		if err := decodeJSON(w, r, &exp); err != nil {
+			sendError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 			return
 		}
 		id, err := expenses.InsertExpense(s.db, exp)
@@ -733,8 +936,8 @@ func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost {
 		var p projects.Project
-		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-			sendError(w, http.StatusBadRequest, "Invalid JSON")
+		if err := decodeJSON(w, r, &p); err != nil {
+			sendError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 			return
 		}
 		id, err := projects.InsertProject(s.db, p)
@@ -766,8 +969,8 @@ func (s *Server) handleDecisions(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost {
 		var d decisions.Decision
-		if err := json.NewDecoder(r.Body).Decode(&d); err != nil {
-			sendError(w, http.StatusBadRequest, "Invalid JSON")
+		if err := decodeJSON(w, r, &d); err != nil {
+			sendError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 			return
 		}
 		id, err := decisions.InsertDecision(s.db, d)
@@ -801,8 +1004,8 @@ func (s *Server) handleDecisionItem(w http.ResponseWriter, r *http.Request) {
 			ActualOutcome string `json:"actual_outcome"`
 			Status        string `json:"status"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			sendError(w, http.StatusBadRequest, "Invalid JSON")
+		if err := decodeJSON(w, r, &req); err != nil {
+			sendError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 			return
 		}
 		ok, err := decisions.ReviewDecision(s.db, id, req.ActualOutcome, req.Status)
@@ -836,8 +1039,8 @@ func (s *Server) handleMaintenance(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost {
 		var item lifeops.MaintenanceItem
-		if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
-			sendError(w, http.StatusBadRequest, "Invalid JSON")
+		if err := decodeJSON(w, r, &item); err != nil {
+			sendError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 			return
 		}
 		id, err := lifeops.InsertMaintenance(s.db, item)
@@ -871,7 +1074,10 @@ func (s *Server) handleMaintenanceItem(w http.ResponseWriter, r *http.Request) {
 			Date string   `json:"date"`
 			Cost *float64 `json:"cost"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&req)
+		if err := decodeJSON(w, r, &req); err != nil && !errors.Is(err, io.EOF) {
+			sendError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+			return
+		}
 		res, err := lifeops.CompleteMaintenance(s.db, id, req.Date, req.Cost)
 		if err != nil {
 			sendError(w, http.StatusInternalServerError, err.Error())
@@ -901,8 +1107,8 @@ func (s *Server) handleReviews(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost {
 		var rev reviews.Retrospective
-		if err := json.NewDecoder(r.Body).Decode(&rev); err != nil {
-			sendError(w, http.StatusBadRequest, "Invalid JSON")
+		if err := decodeJSON(w, r, &rev); err != nil {
+			sendError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 			return
 		}
 		id, err := reviews.InsertRetrospective(s.db, rev)
@@ -935,8 +1141,8 @@ func (s *Server) handleGadgets(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost {
 		var g gadgets.Gadget
-		if err := json.NewDecoder(r.Body).Decode(&g); err != nil {
-			sendError(w, http.StatusBadRequest, "Invalid JSON")
+		if err := decodeJSON(w, r, &g); err != nil {
+			sendError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 			return
 		}
 		id, err := gadgets.InsertGadget(s.db, g)
@@ -1275,8 +1481,8 @@ func (s *Server) handleVendors(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost {
 		var v vendors.Vendor
-		if err := json.NewDecoder(r.Body).Decode(&v); err != nil {
-			sendError(w, http.StatusBadRequest, "Invalid JSON")
+		if err := decodeJSON(w, r, &v); err != nil {
+			sendError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 			return
 		}
 		id, err := vendors.InsertVendor(s.db, v)
@@ -1349,8 +1555,8 @@ func (s *Server) handleCommerceAccounts(w http.ResponseWriter, r *http.Request) 
 
 	if r.Method == http.MethodPost {
 		var p commerce.PaymentAccount
-		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-			sendError(w, http.StatusBadRequest, "Invalid JSON")
+		if err := decodeJSON(w, r, &p); err != nil {
+			sendError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 			return
 		}
 		id, err := commerce.InsertPaymentAccount(s.db, p)
@@ -1395,8 +1601,8 @@ func (s *Server) handleCommerceReferrals(w http.ResponseWriter, r *http.Request)
 
 	if r.Method == http.MethodPost {
 		var ref commerce.Referral
-		if err := json.NewDecoder(r.Body).Decode(&ref); err != nil {
-			sendError(w, http.StatusBadRequest, "Invalid JSON")
+		if err := decodeJSON(w, r, &ref); err != nil {
+			sendError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 			return
 		}
 		id, err := commerce.InsertReferral(s.db, ref)
@@ -1412,6 +1618,10 @@ func (s *Server) handleCommerceReferrals(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		sendError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
 	res, err := audit.RunAudit(s.db)
 	if err != nil {
 		sendError(w, http.StatusInternalServerError, err.Error())
@@ -1426,18 +1636,21 @@ func (s *Server) handleLocationWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var data map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		sendError(w, http.StatusBadRequest, "Invalid JSON")
+	var data struct {
+		Lat *float64 `json:"lat"`
+		Lon *float64 `json:"lon"`
+	}
+	if err := decodeJSON(w, r, &data); err != nil {
+		sendError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 		return
 	}
 
-	lat, hasLat := data["lat"].(float64)
-	lon, hasLon := data["lon"].(float64)
-	if !hasLat || !hasLon {
+	if data.Lat == nil || data.Lon == nil {
 		sendJSON(w, http.StatusOK, map[string]string{"status": "ignored", "reason": "No coordinates"})
 		return
 	}
+	lat := *data.Lat
+	lon := *data.Lon
 
 	nowStr := time.Now().Format("2006-01-02 15:04:05")
 	title := fmt.Sprintf("GPS Location Ping (%.4f, %.4f)", lat, lon)
