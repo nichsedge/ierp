@@ -693,7 +693,31 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
 
-        # 3. Canonical Categories
+        # 3. Portfolio Snapshot for Sans Finance
+        if self.path in ("/api/portfolio/snapshot", "/api/portfolio/latest"):
+            if not self.is_auth():
+                return self.send_json({"error": "Unauthorized"}, 401)
+            data = r2_get_object("portfolio/latest_snapshot.json")
+            if not data:
+                return self.send_json({"error": "No portfolio snapshot found in R2"}, 404)
+            try:
+                snap_obj = json.loads(data.decode("utf-8"))
+                if "advisor" not in snap_obj or not snap_obj.get("advisor"):
+                    adv_bytes = r2_get_object("portfolio/latest_advisor.json")
+                    if adv_bytes:
+                        snap_obj["advisor"] = json.loads(adv_bytes.decode("utf-8"))
+                        data = json.dumps(snap_obj).encode("utf-8")
+            except Exception as e:
+                print(f"⚠️ Could not enrich snapshot with advisor: {e}")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
+        # 4. Canonical Categories
         if self.path == "/api/categories":
             return self.send_json({
                 "categories": [
