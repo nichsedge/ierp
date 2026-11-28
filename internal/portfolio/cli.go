@@ -757,6 +757,12 @@ func runAdvisor(args []string, stdout, stderr io.Writer) error {
 	fs.SetOutput(stderr)
 	mdFlag := fs.Bool("markdown", false, "Output non-ANSI Markdown briefing")
 	jsonFlag := fs.Bool("json", false, "Output structured JSON payload")
+	idxFlag := fs.Bool("idx", false, "Fetch live quant alpha signals from idx-bei API")
+	defaultIdxURL := os.Getenv("IDX_BEI_API_URL")
+	if defaultIdxURL == "" {
+		defaultIdxURL = "http://127.0.0.1:8000"
+	}
+	idxURLFlag := fs.String("idx-url", defaultIdxURL, "Base URL for idx-bei API")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -779,8 +785,18 @@ func runAdvisor(args []string, stdout, stderr io.Writer) error {
 		defer dbConn.Close()
 	}
 
+	var idxMap map[string]advisor.IdxAlphaSignal
+	var watchlist []advisor.IdxAlphaSignal
+	if *idxFlag || os.Getenv("IDX_BEI_API_URL") != "" {
+		var idxErr error
+		idxMap, watchlist, idxErr = advisor.FetchIdxSignals(context.Background(), *idxURLFlag)
+		if idxErr != nil {
+			return fmt.Errorf("fetch idx-bei signals: %w", idxErr)
+		}
+	}
+
 	state, _ := aistate.GenerateAIState(&snap, dbConn)
-	payload := advisor.GenerateAdvisorPayload(&snap, state, dbConn)
+	payload := advisor.GenerateAdvisorPayloadWithSignals(&snap, state, dbConn, idxMap, watchlist)
 
 	if *jsonFlag {
 		b, err := json.MarshalIndent(payload, "", "  ")
@@ -811,6 +827,24 @@ func runAdvisor(args []string, stdout, stderr io.Writer) error {
 	fmt.Fprintf(stdout, "  %-30s  Rp %-14s  (%.1f%%)\n", p.Tier1OperatingReserve.Name, formatIDR(p.Tier1OperatingReserve.AllocatedIDR), p.Tier1OperatingReserve.AllocationPct)
 	fmt.Fprintf(stdout, "  %-30s  Rp %-14s  (%.1f%%)\n", p.Tier2FortressBuffer.Name, formatIDR(p.Tier2FortressBuffer.AllocatedIDR), p.Tier2FortressBuffer.AllocationPct)
 	fmt.Fprintf(stdout, "  %-30s  Rp %-14s  (%.1f%%)\n", p.Tier3DeployableSurplus.Name, formatIDR(p.Tier3DeployableSurplus.AllocatedIDR), p.Tier3DeployableSurplus.AllocationPct)
+	if len(payload.EquitiesVerdicts) > 0 {
+		fmt.Fprintln(stdout, "-------------------------------------------------------")
+		fmt.Fprintln(stdout, "Equity Holdings & Quant Verdicts:")
+		for _, eq := range payload.EquitiesVerdicts {
+			fmt.Fprintf(stdout, "  %-8s  Rp %-12s  (%.1f%%)  [%s] %s\n", eq.Ticker, formatIDR(eq.ValueIDR), eq.WeightPct, eq.TrendRegime, eq.Verdict)
+		}
+	}
+	if len(payload.IdxAlphaSignals) > 0 {
+		fmt.Fprintln(stdout, "-------------------------------------------------------")
+		fmt.Fprintln(stdout, "IDX-BEI Quant Alpha Watchlist:")
+		for _, sig := range payload.IdxAlphaSignals {
+			label := sig.AnomalyType
+			if label == "" {
+				label = sig.DCAVerdict
+			}
+			fmt.Fprintf(stdout, "  %-6s  %-26s  Δ=%.2f  Score=%.0f\n", sig.Ticker, label, sig.SmartMoneyDelta, sig.CompounderScore)
+		}
+	}
 	fmt.Fprintln(stdout, "=======================================================")
 	return nil
 }

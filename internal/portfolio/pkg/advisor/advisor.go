@@ -38,11 +38,15 @@ type SovereignAllocationPlan struct {
 }
 
 type EquityVerdict struct {
-	Ticker      string  `json:"ticker"`
-	ValueIDR    float64 `json:"value_idr"`
-	WeightPct   float64 `json:"weight_pct"`
-	Verdict     string  `json:"verdict"`
-	TrendRegime string  `json:"trend_regime"`
+	Ticker          string  `json:"ticker"`
+	ValueIDR        float64 `json:"value_idr"`
+	WeightPct       float64 `json:"weight_pct"`
+	Verdict         string  `json:"verdict"`
+	TrendRegime     string  `json:"trend_regime"`
+	NFF20D          float64 `json:"nff_20d,omitempty"`
+	WyckoffPhase    string  `json:"wyckoff_phase,omitempty"`
+	SmartMoneyDelta float64 `json:"smart_money_delta,omitempty"`
+	CompounderScore float64 `json:"compounder_score,omitempty"`
 }
 
 type AdvisorPayload struct {
@@ -55,6 +59,7 @@ type AdvisorPayload struct {
 	SovereignAllocationPlan SovereignAllocationPlan `json:"sovereign_allocation_plan"`
 	ActionSummary           string                  `json:"action_summary"`
 	EquitiesVerdicts        []EquityVerdict         `json:"equities_verdicts"`
+	IdxAlphaSignals         []IdxAlphaSignal        `json:"idx_alpha_signals,omitempty"`
 	ADHDDirectives          []string                `json:"adhd_directives"`
 }
 
@@ -176,8 +181,19 @@ func getLiveMonthlyBurn(dbConn *sql.DB) float64 {
 	return 0
 }
 
-// GenerateAdvisorPayload computes the complete advisor state.
+// GenerateAdvisorPayload computes the complete advisor state without external quant signals.
 func GenerateAdvisorPayload(snap *models.Snapshot, aiState *aistate.AIState, dbConn *sql.DB) *AdvisorPayload {
+	return GenerateAdvisorPayloadWithSignals(snap, aiState, dbConn, nil, nil)
+}
+
+// GenerateAdvisorPayloadWithSignals computes the complete advisor state enriched with live idx-bei quant signals.
+func GenerateAdvisorPayloadWithSignals(
+	snap *models.Snapshot,
+	aiState *aistate.AIState,
+	dbConn *sql.DB,
+	idxSignals map[string]IdxAlphaSignal,
+	watchlist []IdxAlphaSignal,
+) *AdvisorPayload {
 	monthlyBurn := 5350000.0
 	if liveBurn := getLiveMonthlyBurn(dbConn); liveBurn > 0 {
 		monthlyBurn = liveBurn
@@ -208,13 +224,39 @@ func GenerateAdvisorPayload(snap *models.Snapshot, aiState *aistate.AIState, dbC
 				verdict = "🧹 MICRO POSITION (SWEEP/CONSOLIDATE)"
 				trend = "FRAGMENTED"
 			}
-			eqVerdicts = append(eqVerdicts, EquityVerdict{
+
+			ev := EquityVerdict{
 				Ticker:      h.Asset,
 				ValueIDR:    *h.ValueIDR,
 				WeightPct:   math.Round(weight*10) / 10,
 				Verdict:     verdict,
 				TrendRegime: trend,
-			})
+			}
+
+			if sig, ok := idxSignals[NormalizeTicker(h.Asset)]; ok {
+				ev.WyckoffPhase = sig.WyckoffPhase
+				ev.SmartMoneyDelta = sig.SmartMoneyDelta
+				ev.NFF20D = sig.NetForeignFlowRP
+				ev.CompounderScore = sig.CompounderScore
+				switch sig.AnomalyType {
+				case "INSTITUTIONAL_ABSORPTION":
+					ev.Verdict = "🐋 ACCUMULATE / BUY (STEALTH ABSORPTION)"
+					ev.TrendRegime = "ACCUMULATION"
+				case "INSTITUTIONAL_MARKUP":
+					ev.Verdict = "🚀 BREAKOUT / BUY (INSTITUTIONAL MARKUP)"
+					ev.TrendRegime = "MARKUP"
+				case "RETAIL_TRAP", "INSTITUTIONAL_LIQUIDATION":
+					ev.Verdict = "⚠️ CAUTION / TRIM (" + sig.AnomalyType + ")"
+					ev.TrendRegime = "DISTRIBUTION"
+				default:
+					if sig.DCAVerdict == "PRIME_DCA" {
+						ev.Verdict = fmt.Sprintf("💎 PRIME DCA / BUY (SCORE %.0f)", sig.CompounderScore)
+						ev.TrendRegime = "BULLISH"
+					}
+				}
+			}
+
+			eqVerdicts = append(eqVerdicts, ev)
 		}
 	}
 	sort.Slice(eqVerdicts, func(i, j int) bool {
@@ -240,6 +282,7 @@ func GenerateAdvisorPayload(snap *models.Snapshot, aiState *aistate.AIState, dbC
 		SovereignAllocationPlan: plan,
 		ActionSummary:           plan.TacticalAdvice,
 		EquitiesVerdicts:        eqVerdicts,
+		IdxAlphaSignals:         watchlist,
 		ADHDDirectives:          adhdDirectives,
 	}
 }
@@ -276,8 +319,27 @@ func GenerateMarkdownBriefing(p *AdvisorPayload) string {
 		sb.WriteString("\n")
 	}
 
+	if len(p.IdxAlphaSignals) > 0 {
+		sb.WriteString("### 4. IDX-BEI Quant Alpha Watchlist\n")
+		sb.WriteString("| Ticker | Signal / DCA | Wyckoff Phase | Smart Money Δ | Score |\n")
+		sb.WriteString("| :--- | :--- | :--- | :--- | :--- |\n")
+		for _, sig := range p.IdxAlphaSignals {
+			label := sig.AnomalyType
+			if label == "" {
+				label = sig.DCAVerdict
+			}
+			phase := sig.WyckoffPhase
+			if phase == "" {
+				phase = sig.ValuationStatus
+			}
+			sb.WriteString(fmt.Sprintf("| **%s** | %s | %s | %.2f | %.0f |\n",
+				sig.Ticker, label, phase, sig.SmartMoneyDelta, sig.CompounderScore))
+		}
+		sb.WriteString("\n")
+	}
+
 	if len(p.ADHDDirectives) > 0 {
-		sb.WriteString("### 4. Zero-Friction ADHD Action Card\n")
+		sb.WriteString("### 5. Zero-Friction ADHD Action Card\n")
 		for _, d := range p.ADHDDirectives {
 			sb.WriteString(fmt.Sprintf("- %s\n", d))
 		}
