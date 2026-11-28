@@ -1,15 +1,12 @@
 package debank
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/nichsedge/ierp/internal/portfolio/pkg/fetchers/debank/scraper"
 	"github.com/nichsedge/ierp/internal/portfolio/pkg/models"
 )
 
@@ -94,15 +91,6 @@ func parseAmount(val interface{}) float64 {
 		return f
 	}
 	return 0.0
-}
-
-// Scrape invokes native chromedp scraper.
-func Scrape(address, targetPath string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	s := scraper.New(scraper.Config{Headless: true})
-	_, err := s.ScrapeToFile(ctx, address, targetPath)
-	return err
 }
 
 // LoadRaw loads and parses a raw DeBank JSON file.

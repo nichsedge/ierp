@@ -136,6 +136,9 @@ func ListGadgets(database *sql.DB, category string, status string) ([]Gadget, er
 		g.IsPublic = (isPublicInt == 1)
 		list = append(list, g)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return list, nil
 }
 

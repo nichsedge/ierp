@@ -25,6 +25,18 @@ const (
 	GrassProgramID = "EyxPPowqBRTpZpiDb2ixUR6XUU1VJwTCNgJdK8eyc6kc"
 )
 
+// EVMNetworks lists the EVM chains queried via Alchemy Data API.
+var EVMNetworks = []string{
+	"eth-mainnet",
+	"arb-mainnet",
+	"base-mainnet",
+	"linea-mainnet",
+	"opt-mainnet",
+	"matic-mainnet",
+	"bnb-mainnet",
+	"zora-mainnet",
+}
+
 type TokenPrice struct {
 	Currency string `json:"currency"`
 	Value    string `json:"value"`
@@ -202,20 +214,29 @@ func fetchGrassStaked(apiKey, walletAddress string) (float64, error) {
 	return qty, nil
 }
 
-// Fetch queries the Alchemy API for Solana holdings and enriches with DexScreener & DeFi staking.
-func Fetch(apiKey, walletAddress string) (*CuratedAlchemyData, []models.Holding, error) {
-	if apiKey == "" || walletAddress == "" {
+// Fetch queries the Alchemy API for Solana and EVM holdings and enriches with DexScreener & DeFi staking.
+func Fetch(apiKey, solAddress, ethAddress string) (*CuratedAlchemyData, []models.Holding, error) {
+	if apiKey == "" || (solAddress == "" && ethAddress == "") {
 		return nil, nil, fmt.Errorf("Alchemy API key or wallet address not provided")
+	}
+
+	var addresses []map[string]interface{}
+	if solAddress != "" {
+		addresses = append(addresses, map[string]interface{}{
+			"address":  solAddress,
+			"networks": []string{"solana-mainnet"},
+		})
+	}
+	if ethAddress != "" {
+		addresses = append(addresses, map[string]interface{}{
+			"address":  ethAddress,
+			"networks": EVMNetworks,
+		})
 	}
 
 	url := fmt.Sprintf("https://api.g.alchemy.com/data/v1/%s/assets/tokens/by-address", apiKey)
 	payload := map[string]interface{}{
-		"addresses": []map[string]interface{}{
-			{
-				"address":  walletAddress,
-				"networks": []string{"solana-mainnet"},
-			},
-		},
+		"addresses": addresses,
 	}
 
 	bodyBytes, _ := json.Marshal(payload)
@@ -257,7 +278,11 @@ func Fetch(apiKey, walletAddress string) (*CuratedAlchemyData, []models.Holding,
 
 		decimals := t.TokenMetadata.Decimals
 		if decimals == 0 {
-			decimals = 9
+			if isSolanaNetwork(t.Network) {
+				decimals = 9
+			} else {
+				decimals = 18
+			}
 		}
 		divisor := math.Pow(10, float64(decimals))
 		fBalance, _ := new(big.Float).SetInt(balanceInt).Float64()
@@ -276,14 +301,14 @@ func Fetch(apiKey, walletAddress string) (*CuratedAlchemyData, []models.Holding,
 		symbol := t.TokenMetadata.Symbol
 		name := t.TokenMetadata.Name
 
-		// Handle native SOL where Alchemy leaves tokenAddress null/empty and symbol/name empty
-		// Handle native SOL where Alchemy leaves tokenAddress null/empty and symbol/name empty or UNKNOWN
-		if (t.TokenAddress == "" || t.TokenAddress == "null") && (strings.Contains(strings.ToLower(t.Network), "solana") || t.Network == "") {
+		// Handle native tokens where Alchemy leaves tokenAddress null/empty and symbol/name empty or UNKNOWN
+		if t.TokenAddress == "" || t.TokenAddress == "null" {
+			defSym, defName := defaultNativeToken(t.Network)
 			if symbol == "" || symbol == "UNKNOWN" {
-				symbol = "SOL"
+				symbol = defSym
 			}
 			if name == "" || name == "UNKNOWN" {
-				name = "Solana"
+				name = defName
 			}
 		}
 
@@ -317,7 +342,9 @@ func Fetch(apiKey, walletAddress string) (*CuratedAlchemyData, []models.Holding,
 			needPriceAddrs = append(needPriceAddrs, a.TokenAddress)
 		}
 	}
-	needPriceAddrs = append(needPriceAddrs, GrassTokenMint)
+	if solAddress != "" {
+		needPriceAddrs = append(needPriceAddrs, GrassTokenMint)
+	}
 
 	dexPrices := fetchDexScreenerPrices(needPriceAddrs)
 
@@ -335,32 +362,34 @@ func Fetch(apiKey, walletAddress string) (*CuratedAlchemyData, []models.Holding,
 	}
 
 	// Fetch Grass DeFi Staked position on Solana
-	stakedGrassQty, err := fetchGrassStaked(apiKey, walletAddress)
-	if err == nil && stakedGrassQty > 0 {
-		grassPrice := dexPrices[GrassTokenMint]
-		if grassPrice == 0 {
-			for _, a := range curated.Assets {
-				if a.Symbol == "GRASS" && a.PriceUSD > 0 {
-					grassPrice = a.PriceUSD
-					break
+	if solAddress != "" {
+		stakedGrassQty, err := fetchGrassStaked(apiKey, solAddress)
+		if err == nil && stakedGrassQty > 0 {
+			grassPrice := dexPrices[GrassTokenMint]
+			if grassPrice == 0 {
+				for _, a := range curated.Assets {
+					if a.Symbol == "GRASS" && a.PriceUSD > 0 {
+						grassPrice = a.PriceUSD
+						break
+					}
 				}
 			}
+			grassValUSD := stakedGrassQty * grassPrice
+			curated.TotalUSD += grassValUSD
+			curated.Assets = append(curated.Assets, AssetEntry{
+				Address:      solAddress,
+				Network:      "solana-mainnet",
+				TokenAddress: GrassTokenMint,
+				Symbol:       "GRASS",
+				Name:         "Grass (Staked)",
+				Quantity:     stakedGrassQty,
+				Decimals:     9,
+				PriceUSD:     grassPrice,
+				ValueUSD:     grassValUSD,
+				Category:     "Staked",
+				IsStaked:     true,
+			})
 		}
-		grassValUSD := stakedGrassQty * grassPrice
-		curated.TotalUSD += grassValUSD
-		curated.Assets = append(curated.Assets, AssetEntry{
-			Address:      walletAddress,
-			Network:      "solana-mainnet",
-			TokenAddress: GrassTokenMint,
-			Symbol:       "GRASS",
-			Name:         "Grass (Staked)",
-			Quantity:     stakedGrassQty,
-			Decimals:     9,
-			PriceUSD:     grassPrice,
-			ValueUSD:     grassValUSD,
-			Category:     "Staked",
-			IsStaked:     true,
-		})
 	}
 
 	holdings := Standardize(curated)
@@ -430,4 +459,22 @@ func SaveCurated(data *CuratedAlchemyData, targetPath string) error {
 		return err
 	}
 	return os.WriteFile(targetPath, b, 0644)
+}
+
+func isSolanaNetwork(network string) bool {
+	return network == "" || strings.Contains(strings.ToLower(network), "solana")
+}
+
+func defaultNativeToken(network string) (string, string) {
+	netLower := strings.ToLower(network)
+	switch {
+	case isSolanaNetwork(network):
+		return "SOL", "Solana"
+	case netLower == "matic-mainnet":
+		return "POL", "Polygon"
+	case netLower == "bnb-mainnet":
+		return "BNB", "BNB"
+	default:
+		return "ETH", "Ethereum"
+	}
 }

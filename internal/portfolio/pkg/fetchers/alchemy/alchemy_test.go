@@ -12,13 +12,14 @@ func TestStandardize(t *testing.T) {
 			{Symbol: "JLP", Name: "Jupiter Perps LP", TokenAddress: "27G8MtK7VtTcCHkpASjSDdkWWYfoqT6ggEuKidVJidD4", Network: "solana-mainnet", Quantity: 8.15, PriceUSD: 4.50, ValueUSD: 36.67},
 			{Symbol: "GRASS", Name: "Grass (Staked)", TokenAddress: GrassTokenMint, Network: "solana-mainnet", Quantity: 42.32, PriceUSD: 0.65, ValueUSD: 27.50, Category: "Staked", IsStaked: true},
 			{Symbol: "USDC", Name: "USD Coin", Network: "solana-mainnet", Quantity: 200.0, PriceUSD: 1.0, ValueUSD: 200.0},
+			{Symbol: "ETH", Name: "Ethereum", TokenAddress: "", Network: "linea-mainnet", Quantity: 0.1, PriceUSD: 2000.0, ValueUSD: 200.0},
 			{Symbol: "MEME", Name: "Meme Token", Network: "solana-mainnet", Quantity: 1000.0, PriceUSD: 0.001, ValueUSD: 1.0}, // < $5 dust
 		},
 	}
 
 	holdings := Standardize(curated)
-	if len(holdings) != 4 {
-		t.Fatalf("expected 4 holdings after dust filter, got %d", len(holdings))
+	if len(holdings) != 5 {
+		t.Fatalf("expected 5 holdings after dust filter, got %d", len(holdings))
 	}
 
 	for _, h := range holdings {
@@ -53,6 +54,13 @@ func TestStandardize(t *testing.T) {
 			}
 			if *h.ValueUSD != 200.0 {
 				t.Errorf("unexpected USDC value: %f", *h.ValueUSD)
+			}
+		case "ETH":
+			if h.Category != "Spot" || h.AssetClass != "Crypto" {
+				t.Errorf("unexpected ETH classification: cat=%s, ac=%s", h.Category, h.AssetClass)
+			}
+			if *h.ValueUSD != 200.0 {
+				t.Errorf("unexpected ETH value: %f", *h.ValueUSD)
 			}
 		default:
 			t.Errorf("unexpected asset: %s", h.Asset)

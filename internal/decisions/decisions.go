@@ -150,6 +150,9 @@ func ListDecisions(database *sql.DB, status string, projectID *int) ([]Decision,
 		}
 		list = append(list, d)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return list, nil
 }
 

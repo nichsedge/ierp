@@ -270,6 +270,45 @@ func TestDashboardCRUDContracts(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("expected 201 for POST /api/events, got %d: %s", rec.Code, rec.Body.String())
 	}
+	var evCreateResp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &evCreateResp); err != nil {
+		t.Fatalf("failed unmarshaling event response: %v", err)
+	}
+	eventID := int(evCreateResp["id"].(float64))
+
+	// 4b. Fetch single event via GET /api/events/{id}
+	req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/events/%d", eventID), nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for GET /api/events/{id}, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Sync with Alice") {
+		t.Fatalf("expected Sync with Alice in event detail, got %s", rec.Body.String())
+	}
+
+	// 4c. Create vendor and toggle favorite via POST /api/vendors/{id}/favorite
+	req = httptest.NewRequest(http.MethodPost, "/api/vendors", strings.NewReader(`{"name": "Kopi Kenangan", "category": "Cafe"}`))
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for POST /api/vendors, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var vendorResp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &vendorResp); err != nil {
+		t.Fatalf("failed unmarshaling vendor response: %v", err)
+	}
+	vendorID := int(vendorResp["id"].(float64))
+
+	req = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/vendors/%d/favorite", vendorID), nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for POST /api/vendors/{id}/favorite, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"favorite":true`) {
+		t.Fatalf("expected favorite:true in toggle response, got %s", rec.Body.String())
+	}
 
 	// 5. Fetch events via GET /api/events
 	req = httptest.NewRequest(http.MethodGet, "/api/events", nil)

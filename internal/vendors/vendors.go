@@ -89,6 +89,9 @@ func ListVendors(database *sql.DB, category string, favoriteOnly bool) ([]Vendor
 		v.Favorite = (favInt == 1)
 		list = append(list, v)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return list, nil
 }
 

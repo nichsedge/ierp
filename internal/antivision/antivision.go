@@ -145,6 +145,9 @@ func ListAntiVision(database *sql.DB, domain, status string) ([]AntiVisionItem, 
 		}
 		items = append(items, it)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	return items, nil
 }

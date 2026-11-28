@@ -211,6 +211,9 @@ func ListContacts(database *sql.DB, opts ListOptions) ([]Contact, int, error) {
 		}
 		contacts = append(contacts, c)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
 
 	return contacts, total, nil
 }

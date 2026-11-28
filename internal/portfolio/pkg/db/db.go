@@ -116,8 +116,9 @@ func OpenDB(dbPath string) (*sql.DB, error) {
 			return nil, fmt.Errorf("failed executing PRAGMA foreign_keys = ON: %w", err)
 		}
 
+		// Disable idle keepalive pool for Turso Hrana HTTP streams to avoid stale-connection errors.
 		db.SetMaxOpenConns(10)
-		db.SetMaxIdleConns(5)
+		db.SetMaxIdleConns(0)
 
 		if err := InitDB(db); err != nil {
 			db.Close()
@@ -163,7 +164,7 @@ func OpenDB(dbPath string) (*sql.DB, error) {
 }
 
 func isRemoteTarget(target string) bool {
-	return len(target) > 8 && (target[:9] == "libsql://" || target[:8] == "https://" || target[:7] == "http://")
+	return strings.HasPrefix(target, "libsql://") || strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "http://")
 }
 
 // InitDB initializes database tables.
@@ -174,31 +175,37 @@ func InitDB(db *sql.DB) error {
 
 	// Ensure yield_rate column exists
 	hasYield := false
-	if rows, err := db.Query("PRAGMA table_info(holdings)"); err == nil {
-		for rows.Next() {
-			var cid int
-			var name, ctype string
-			var notnull, pk int
-			var dfltValue interface{}
-			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err == nil {
-				if name == "yield_rate" {
-					hasYield = true
-					break
-				}
-			}
+	rows, err := db.Query("PRAGMA table_info(holdings)")
+	if err != nil {
+		return fmt.Errorf("failed to inspect holdings schema: %w", err)
+	}
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dfltValue interface{}
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err == nil && name == "yield_rate" {
+			hasYield = true
+			break
 		}
-		rows.Close()
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("failed closing holdings schema rows: %w", err)
 	}
 	if !hasYield {
-		_, _ = db.Exec("ALTER TABLE holdings ADD COLUMN yield_rate REAL;")
+		if _, err := db.Exec("ALTER TABLE holdings ADD COLUMN yield_rate REAL;"); err != nil {
+			return fmt.Errorf("failed adding yield_rate column: %w", err)
+		}
 	}
 
 	// Standardize legacy source taxonomy and resolve UNKNOWN assets
-	_, _ = db.Exec(`
+	if _, err := db.Exec(`
 		UPDATE holdings SET source = 'debank' WHERE source = 'EVM Wallet';
 		UPDATE holdings SET source = 'alchemy' WHERE source = 'SOL Wallet';
 		UPDATE holdings SET ticker = 'SOL', name = 'Solana' WHERE (ticker = 'UNKNOWN' OR ticker = '' OR ticker IS NULL) AND source = 'alchemy';
-	`)
+	`); err != nil {
+		return fmt.Errorf("failed normalizing holdings taxonomy: %w", err)
+	}
 
 	return nil
 }

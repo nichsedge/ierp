@@ -742,11 +742,10 @@
     async toggleVendorFavorite(vendorId, event) {
       if (event) event.stopPropagation();
       try {
-        const res = await fetch('/api/vendors/favorite', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: vendorId })
+        const res = await fetch(`/api/vendors/${vendorId}/favorite`, {
+          method: 'POST'
         });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         if (data.success) {
           const item = this.collections.vendors.items.find(v => v.id === vendorId);

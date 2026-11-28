@@ -106,6 +106,9 @@ func ListPaymentAccounts(database *sql.DB, category string) ([]PaymentAccount, e
 		}
 		list = append(list, p)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return list, nil
 }
 
@@ -186,6 +189,9 @@ func ListReferrals(database *sql.DB, category string, status string) ([]Referral
 		}
 		r.IsPublic = (isPublicInt == 1)
 		list = append(list, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return list, nil
 }

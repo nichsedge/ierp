@@ -1,6 +1,7 @@
 package sansfinance
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -11,7 +12,7 @@ import (
 	"github.com/nichsedge/ierp/internal/config"
 	"github.com/nichsedge/ierp/internal/db"
 	"github.com/nichsedge/ierp/internal/portfolio/pkg/models"
-	"github.com/nichsedge/ierp/internal/portfolio/pkg/r2"
+	"github.com/nichsedge/ierp/internal/r2"
 	_ "modernc.org/sqlite"
 )
 
@@ -36,7 +37,13 @@ func DownloadFromR2(accountID, accessKey, secretKey, bucket, destPath string) er
 	if bucket == "" {
 		bucket = defaultBucketName
 	}
-	return r2.DownloadFile(accountID, accessKey, secretKey, bucket, r2BlobName, destPath)
+	creds := r2.Credentials{
+		AccountID:       accountID,
+		AccessKeyID:     accessKey,
+		SecretAccessKey: secretKey,
+		BucketName:      bucket,
+	}
+	return r2.DownloadFile(context.Background(), creds, r2BlobName, destPath)
 }
 
 // FetchFromDB extracts cash/p2p accounts directly from iERP's accounts table.

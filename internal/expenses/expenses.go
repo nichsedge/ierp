@@ -263,6 +263,9 @@ func ListExpenses(database *sql.DB, opts ListOptions) ([]Expense, error) {
 		}
 		results = append(results, e)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return results, nil
 }
 

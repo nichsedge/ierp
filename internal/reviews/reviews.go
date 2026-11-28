@@ -90,6 +90,9 @@ func ListRetrospectives(database *sql.DB, periodType string, limit int) ([]Retro
 		}
 		list = append(list, r)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return list, nil
 }
 

@@ -11,7 +11,9 @@ import (
 
 func main() {
 	if filepath.Base(os.Args[0]) == "portfolio" {
-		portfolio.RunCLI(os.Args[1:])
+		if err := portfolio.Run(context.Background(), os.Args[1:], os.Stdout, os.Stderr); err != nil {
+			os.Exit(1)
+		}
 		return
 	}
 

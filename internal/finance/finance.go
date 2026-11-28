@@ -128,6 +128,9 @@ func ListSnapshots(database *sql.DB, limit int) ([]Snapshot, error) {
 		s.NetWorth = (s.LiquidCash + s.Investments + s.HardAssets) - s.Liabilities
 		snapshots = append(snapshots, s)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	return snapshots, nil
 }

@@ -107,6 +107,9 @@ func ListMediaItems(database *sql.DB, mediaType string, source string) ([]MediaI
 		_ = json.Unmarshal([]byte(raw), &it.Data)
 		list = append(list, it)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	return list, nil
 }
@@ -165,6 +168,9 @@ func ListLinks(database *sql.DB, category string) ([]Link, error) {
 		}
 		l.IsPublic = pubInt == 1
 		list = append(list, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return list, nil
 }

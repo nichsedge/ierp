@@ -105,6 +105,9 @@ func ListProjects(database *sql.DB, status string) ([]Project, error) {
 		}
 		list = append(list, p)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return list, nil
 }
 

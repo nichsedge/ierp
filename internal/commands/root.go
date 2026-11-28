@@ -46,10 +46,12 @@ func PrintUsage(w io.Writer) {
 	fmt.Fprintln(w, "  insert-commitment    Record a recurring fixed burn expense")
 	fmt.Fprintln(w, "  commitments          List recurring financial commitments")
 	fmt.Fprintln(w, "  expense              Expense tracking (add, list, summary, ingest, delete)")
+	fmt.Fprintln(w, "  income               Record or list income transactions")
 	fmt.Fprintln(w, "  insert-expense       Record a single expense transaction")
 	fmt.Fprintln(w, "  expenses             List recent expense transactions")
 	fmt.Fprintln(w, "  ingest-expenses      Ingest expenses from Markdown story or JSON")
 	fmt.Fprintln(w, "  runway               Calculate sovereign runway and wealth metrics")
+	fmt.Fprintln(w, "  portfolio            Unified multi-asset portfolio engine (run, fetch, integrate, ai-state, advisor, mcp, r2)")
 	fmt.Fprintln(w, "  r2                   Cloudflare R2 sync (status, push, pull, auto)")
 	fmt.Fprintln(w, "  sync portfolio       Ingest latest multi-asset portfolio snapshot & runway")
 	fmt.Fprintln(w, "  sync gh-projects     Sync GitHub repositories into events.db")
@@ -68,6 +70,8 @@ func PrintUsage(w io.Writer) {
 	fmt.Fprintln(w, "  insert-review        Record a weekly/monthly/quarterly retrospective")
 	fmt.Fprintln(w, "  antivision           List active anti-vision negative constraints")
 	fmt.Fprintln(w, "  insert-antivision    Record a new anti-vision constraint")
+	fmt.Fprintln(w, "  update-antivision    Update an existing anti-vision constraint")
+	fmt.Fprintln(w, "  delete-antivision    Delete an anti-vision constraint")
 	fmt.Fprintln(w, "  roles                List vocational role explorations")
 	fmt.Fprintln(w, "  insert-role          Record a role exploration")
 	fmt.Fprintln(w, "  skills               List capability & skills inventory")
@@ -214,8 +218,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	case "sync-portfolio":
 		return handleSyncPortfolio(ctx, cmdArgs, stdout, stderr)
 	case "portfolio":
-		portfolio.RunCLI(cmdArgs)
-		return nil
+		return portfolio.Run(ctx, cmdArgs, stdout, stderr)
 	case "sync-github", "sync-gh-projects":
 		return handleSyncGitHub(ctx, cmdArgs, stdout, stderr)
 	case "sync":

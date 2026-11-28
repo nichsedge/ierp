@@ -95,6 +95,9 @@ func ListRoles(database *sql.DB, status string) ([]RoleExploration, error) {
 		}
 		roles = append(roles, r)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	return roles, nil
 }
@@ -165,6 +168,9 @@ func ListSkills(database *sql.DB, skillType string) ([]SkillInventory, error) {
 			return nil, fmt.Errorf("failed scanning skill: %w", err)
 		}
 		skills = append(skills, sk)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return skills, nil

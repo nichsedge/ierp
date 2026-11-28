@@ -373,7 +373,7 @@ func handleDeleteExpense(ctx context.Context, args []string, stdout, stderr io.W
 }
 
 func handleBackfillExpenses(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	defaultDB := "/home/al/Projects/ierp/data/sans_finance_latest.sqlite"
+	defaultDB := filepath.Join("data", "sans_finance_latest.sqlite")
 	if home, err := os.UserHomeDir(); err == nil {
 		defaultDB = filepath.Join(home, "Projects", "ierp", "data", "sans_finance_latest.sqlite")
 	}

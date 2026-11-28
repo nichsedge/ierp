@@ -29,10 +29,11 @@ const (
 
 // Credentials holds Cloudflare R2 / S3 credentials.
 type Credentials struct {
-	AccountID       string
-	AccessKeyID     string
-	SecretAccessKey string
-	BucketName      string
+	AccountID        string
+	AccessKeyID      string
+	SecretAccessKey  string
+	BucketName       string
+	EndpointOverride string
 }
 
 // ObjectMeta represents remote object metadata.
@@ -173,9 +174,14 @@ func getSignatureKey(key, dateStamp, regionName, serviceName string) []byte {
 	return hmacSHA256(kService, []byte("aws4_request"))
 }
 
-func s3Request(ctx context.Context, method, key string, creds Credentials, payload []byte) (*http.Request, error) {
+func s3Request(ctx context.Context, method, key string, creds Credentials, payload []byte, contentType ...string) (*http.Request, error) {
 	host := fmt.Sprintf("%s.r2.cloudflarestorage.com", creds.AccountID)
-	endpointURL := fmt.Sprintf("https://%s/%s/%s", host, creds.BucketName, key)
+	baseURL := fmt.Sprintf("https://%s", host)
+	if creds.EndpointOverride != "" {
+		baseURL = strings.TrimRight(creds.EndpointOverride, "/")
+		host = strings.TrimPrefix(strings.TrimPrefix(baseURL, "https://"), "http://")
+	}
+	endpointURL := fmt.Sprintf("%s/%s/%s", baseURL, creds.BucketName, key)
 
 	now := time.Now().UTC()
 	amzDate := now.Format("20060102T150405Z")
@@ -186,10 +192,14 @@ func s3Request(ctx context.Context, method, key string, creds Credentials, paylo
 
 	var canonicalHeaders string
 	var signedHeaders string
-
-	if method == "PUT" {
-		canonicalHeaders = fmt.Sprintf("content-type:application/x-sqlite3\nhost:%s\nx-amz-content-sha256:%s\nx-amz-date:%s\n",
-			host, payloadHash, amzDate)
+	ct := ""
+	if method == http.MethodPut {
+		ct = "application/x-sqlite3"
+		if len(contentType) > 0 && contentType[0] != "" {
+			ct = contentType[0]
+		}
+		canonicalHeaders = fmt.Sprintf("content-type:%s\nhost:%s\nx-amz-content-sha256:%s\nx-amz-date:%s\n",
+			ct, host, payloadHash, amzDate)
 		signedHeaders = "content-type;host;x-amz-content-sha256;x-amz-date"
 	} else {
 		canonicalHeaders = fmt.Sprintf("host:%s\nx-amz-content-sha256:%s\nx-amz-date:%s\n",
@@ -217,8 +227,8 @@ func s3Request(ctx context.Context, method, key string, creds Credentials, paylo
 		return nil, err
 	}
 
-	if method == "PUT" {
-		req.Header.Set("Content-Type", "application/x-sqlite3")
+	if ct != "" {
+		req.Header.Set("Content-Type", ct)
 	}
 	req.Header.Set("Host", host)
 	req.Header.Set("x-amz-content-sha256", payloadHash)
@@ -226,6 +236,71 @@ func s3Request(ctx context.Context, method, key string, creds Credentials, paylo
 	req.Header.Set("Authorization", authHeader)
 
 	return req, nil
+}
+
+// UploadFile uploads a local file to Cloudflare R2 using S3 SigV4 PUT.
+func UploadFile(ctx context.Context, creds Credentials, localPath, key, contentType string) error {
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", localPath, err)
+	}
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	req, err := s3Request(ctx, http.MethodPut, key, creds, data, contentType)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("upload R2 %s: %w", key, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("R2 PUT %s failed (status %d): %s", key, resp.StatusCode, string(body))
+	}
+	return nil
+}
+
+// DownloadFile downloads an object from Cloudflare R2 to destPath using S3 SigV4 GET.
+func DownloadFile(ctx context.Context, creds Credentials, key, destPath string) error {
+	req, err := s3Request(ctx, http.MethodGet, key, creds, nil)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("download R2 %s: %w", key, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("R2 GET %s failed (status %d): %s", key, resp.StatusCode, string(body))
+	}
+
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return fmt.Errorf("create directory for %s: %w", destPath, err)
+	}
+	out, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("create %s: %w", destPath, err)
+	}
+	if _, err := io.Copy(out, resp.Body); err != nil {
+		_ = out.Close()
+		return fmt.Errorf("write %s: %w", destPath, err)
+	}
+	if err := out.Close(); err != nil {
+		return fmt.Errorf("close %s: %w", destPath, err)
+	}
+	return nil
 }
 
 // GetRemoteMetadata fetches object metadata from R2 via HEAD.
