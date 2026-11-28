@@ -31,6 +31,7 @@ iERP is the **Central Single Source of Truth (SSOT) for Structured Personal ERP 
   * **Two-Tier SSOT Storage**: Turso libSQL Cloud is the primary read/write Tier 1 SSOT for `ierp` (events, CRM, commitments, runway). Binary R2 sync (`ierp r2`) is reserved strictly as a secondary cold archive.
 * **Upstream Intake**:
   * **Portfolio Snapshots**: `ierp sync portfolio` reads `ierp/data/portfolio/latest_snapshot.json`, inserts `networth_snapshots`, and calculates sovereign runway.
+  * **Cloud Run Portfolio ETL**: `ierp portfolio run --monthly-weekday` runs via Cloud Run Job (`ierp-portfolio` in `us-central1`, `Dockerfile` + `scripts/deploy_portfolio_job.sh`) triggered by Cloud Scheduler (`0 17 25-27 * *` WIB), fetching KSEI, Binance, Alchemy (Solana + EVM), Hyperliquid, and SansFinance, uploading to R2, and sending a Telegram summary (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`).
   * **Commitments & Burn**: Fixed monthly commitments feed `ierp insert-commitment` for runway calculations.
 * **Balance Sheet Snapshot Workflow**:
   * `ierp insert-snapshot` records a new balance sheet; `ierp update-snapshot --id N` corrects one in place; `ierp delete-snapshot --id N` voids one.
